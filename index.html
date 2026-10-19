@@ -206,7 +206,7 @@ var SUPABASE_KEY = "sb_publishable_Al-p4Nlsa28WBgtInLiXQA_PCT5ArPT";
 /* ---- נעילת רישיון ----
    בפריסה ל-Netlify: הכנס את הדומיין שלך ל-hosts, וקבע enforce=true.
    כרגע כבוי כדי לא לחסום אותך בבדיקות. הודעת שגיאה בלבד למי שמריץ עותק. */
-var LICENSE = { enforce:true, hosts:["permito.netlify.app","localhost","127.0.0.1"] };
+var LICENSE = { enforce:true, hosts:["permito.netlify.app","rishmenergy79.github.io","localhost","127.0.0.1"] };
 var _CANARY = "PMT-OWNER-nadav-menergy-b41d8e2a-7f3a9c";  /* חתימת בעלות — אל תמחק */
 
 function licenseOK(){
@@ -1211,7 +1211,7 @@ function renderUsers(){
     var pend=users.filter(function(u){return u.role==="pending"||u.active===false;});
     var h=back;
     if(pendingNotice){
-      var pn=pendingNotice, allc='אימייל: '+pn.email+' | סיסמה זמנית: '+pn.pw+' | כתובת: permito.netlify.app — בכניסה הראשונה בחר סיסמה קבועה';
+      var pn=pendingNotice, allc='אימייל: '+pn.email+' | סיסמה זמנית: '+pn.pw+' | כתובת: rishmenergy79.github.io/permito — בכניסה הראשונה בחר סיסמה קבועה';
       h+='<div class="note" style="border:1px solid var(--accent)"><b>'+(pn.kind==="create"?"המשתמש נוצר.":"הסיסמה אופסה.")+'</b> מסור למשתמש את הפרטים — הוא יבחר סיסמה קבועה בכניסה הראשונה. הפרטים לא יוצגו שוב.'+
         '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
         '<span>אימייל: <b class="mono">'+esc(pn.email)+'</b></span><button class="copybtn" data-copy="'+esc(pn.email)+'">העתק</button>'+
