@@ -233,9 +233,11 @@ var TASK_ST={pending:{l:"ממתין",c:"p-wait"},in_progress:{l:"בביצוע",c
 var STATE_ST={active:{l:"פעיל",c:"p-live"},frozen:{l:"מוקפא",c:"p-idle"},cancelled:{l:"מבוטל",c:"p-bad"}};
 var PCOLORS={green:{bg:"rgba(80,248,8,.16)",bd:"#50F808",l:"תקין"},red:{bg:"rgba(232,24,32,.14)",bd:"#E81820",l:"חריגה מלו\"ז"},blue:{bg:"rgba(0,144,248,.14)",bd:"#0090F8",l:"התקבל אישור"}};
 function tint(p){var m=PCOLORS[p&&p.status_color];return m?' style="background:'+m.bg+';border-inline-start:5px solid '+m.bd+'"':'';}
-function syncedChip(p){return (p&&p.is_synced)?'<span class="pill chip-sync">מסונכרן</span>':'';}
-function colorCtl(p){var id=p.order_no,cur=p.status_color||'';var h='<span class="ctlwrap"><select class="ccol" data-color="'+esc(id)+'"><option value=""'+(cur===''?' selected':'')+'>ללא צבע</option>';for(var k in PCOLORS)h+='<option value="'+k+'"'+(cur===k?' selected':'')+'>'+PCOLORS[k].l+'</option>';h+='</select><label class="synctog"><input type="checkbox" data-sync="'+esc(id)+'"'+(p.is_synced?' checked':'')+'> מסונכרן</label></span>';return h;}
+function isConn(p){return !!(p&&p.contacts&&p.contacts._flags&&p.contacts._flags.connected);}
+function syncedChip(p){return ((p&&p.is_synced)?'<span class="pill chip-sync">מסונכרן</span>':'')+(isConn(p)?' <span class="pill chip-sync">מערכת מחוברת</span>':'');}
+function colorCtl(p){var id=p.order_no,cur=p.status_color||'';var h='<span class="ctlwrap"><select class="ccol" data-color="'+esc(id)+'"><option value=""'+(cur===''?' selected':'')+'>ללא צבע</option>';for(var k in PCOLORS)h+='<option value="'+k+'"'+(cur===k?' selected':'')+'>'+PCOLORS[k].l+'</option>';h+='</select><label class="synctog"><input type="checkbox" data-sync="'+esc(id)+'"'+(p.is_synced?' checked':'')+'> מסונכרן</label><label class="synctog"><input type="checkbox" data-conn="'+esc(id)+'"'+(isConn(p)?' checked':'')+'> מחובר</label></span>';return h;}
 function setColor(id,v){var p=findP(id);if(p)p.status_color=v;render();touchAndUpdate(id,{status_color:v||null});}
+function setConn(id,v){var p=findP(id);if(!p)return;var c=JSON.parse(JSON.stringify(p.contacts||{}));c._flags=c._flags||{};c._flags.connected=v;c._flags.connected_at=v?today():null;p.contacts=c;render();bindProjects();touchAndUpdate(id,{contacts:c});}
 function setSynced(id,v){var p=findP(id);if(p)p.is_synced=v;render();touchAndUpdate(id,{is_synced:v});}
 var PTYPES=["חלקה א קרקע","חלקה א + אגירה","אגרו סולארי + אגירה","חממה","חממה + אגירה"];
 var ROLES={pending:"ממתין לאישור",viewer:"צפייה",editor:"עריכה",master:"מנהל-על"};
@@ -961,6 +963,7 @@ function bindProjects(){
   document.querySelectorAll("[data-open]").forEach(function(b){b.onclick=function(){var id=b.dataset.open;if(openId===id)openId=null;else{openId=id;tab="stages";if(!finance[id])loadFinance(id);}render();bindProjects();};});
   document.querySelectorAll("[data-color]").forEach(function(sel){sel.onclick=function(ev){ev.stopPropagation();};sel.onchange=function(ev){ev.stopPropagation();setColor(sel.dataset.color,sel.value);};});
   document.querySelectorAll("[data-sync]").forEach(function(cb){cb.onchange=function(ev){setSynced(cb.dataset.sync,cb.checked);};});
+  document.querySelectorAll("[data-conn]").forEach(function(cb){cb.onclick=function(ev){ev.stopPropagation();};cb.onchange=function(){setConn(cb.dataset.conn,cb.checked);};});
   document.querySelectorAll(".ctlwrap,.synctog").forEach(function(w){w.addEventListener("click",function(ev){ev.stopPropagation();});});
   bindFilters();
   bindDetail();
