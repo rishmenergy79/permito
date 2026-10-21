@@ -973,7 +973,7 @@ function loadFinance(id){
 /* ---------- detail ---------- */
 function detailHTML(p){
   var id=p.order_no;
-  var T=[["stages","שלבי רישוי"],["docs","מסמכים"],["files","קבצים"],["increases","הגדלות"],["contacts","אנשי קשר"],["log","התכתבויות"],["tasks","משימות אליי"],["info","פרטי הבקשה"],["ops","תפעול"+(canWrite()?" ומסחרי":"")],["proc_con","רכש קונסטרוקציה"],["proc_pan","רכש פאנלים"],["proc_inv","רכש ממירים"],["proc_bat","רכש קבינטי אגירה"]];
+  var T=[["stages","שלבי רישוי"],["docs","מסמכים"],["files","קבצים"],["increases","הגדלות"],["contacts","אנשי קשר"],["log","התכתבויות"],["tasks","משימות אליי"],["info","פרטי הבקשה"],["ops","תפעול"+(canWrite()?" ומסחרי":"")],["proc","רכש"],["tech","תיאום טכני"]];
   var h='<div class="detail"><div class="tabs">';
   T.forEach(function(t){h+='<button data-tab="'+t[0]+'" aria-current="'+(tab===t[0])+'">'+esc(t[1])+'</button>';});
   h+='</div>';
@@ -986,7 +986,8 @@ function detailHTML(p){
   if(tab==="tasks")h+=tasksTab(id);
   if(tab==="info")h+=infoHTML(id,p);
   if(tab==="ops")h+=opsHTML(id,p);
-  if(PROC_KINDS[tab])h+=procHTML(id,p,tab);
+  if(tab==="proc")Object.keys(PROC_KINDS).forEach(function(k){h+=procHTML(id,p,k);});
+  if(tab==="tech")h+=techHTML(id,p);
   h+='<p class="muted" style="font-size:12px;margin:16px 0 0">עודכן '+esc(fmtDate(p.updated_at))+(p.source&&p.source!=="manual"?' · מיובא מאקסל':'')+'</p></div>';
   return h;
 }
@@ -1006,6 +1007,26 @@ function procHTML(id,p,kind){
     '<div class="field wide"><label>הערות</label><textarea data-proc="'+kind+'" data-pk="notes" data-pid="'+esc(id)+'" rows="3"'+ro()+'>'+esc(d.notes==null?"":d.notes)+'</textarea></div></div>';
   if(d.updated_at)h+='<p class="muted" style="font-size:12px">עודכן ברכש: '+esc(fmtDate(d.updated_at))+'</p>';
   return h;
+}
+/* ---------- תיאום טכני: נשמר ב-contacts._tech ---------- */
+var TECH_ST=["לא בוצע","בוצע","התקבל נספח תאום","נספח תאום הוגש חתום","תאום אושר ונסגר"];
+function techHTML(id,p){
+  var d=(p.contacts&&p.contacts._tech)||{},st=d.status||"לא בוצע",i=TECH_ST.indexOf(st);
+  var h='<div class="gh">תיאום טכני</div>';
+  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+TECH_ST.map(function(o,j){return '<span class="pill '+(j<i?"p-done":j===i?"p-live":"p-idle")+'">'+(j+1)+'. '+esc(o)+'</span>';}).join("")+'</div>';
+  h+='<div class="fields"><div class="field"><label>סטטוס</label><select data-tech="status" data-pid="'+esc(id)+'"'+ro()+'>'+TECH_ST.map(function(o){return '<option'+(o===st?" selected":"")+'>'+esc(o)+'</option>';}).join("")+'</select></div>'+
+    '<div class="field"><label>תאריך</label><input type="date" data-tech="date" data-pid="'+esc(id)+'" value="'+esc(d.date||"")+'"'+ro()+'></div>'+
+    '<div class="field"><label>מול מי / אחראי</label><input data-tech="who" data-pid="'+esc(id)+'" value="'+esc(d.who||"")+'"'+ro()+'></div>'+
+    '<div class="field wide"><label>הערות</label><textarea data-tech="notes" data-pid="'+esc(id)+'" rows="3"'+ro()+'>'+esc(d.notes||"")+'</textarea></div></div>';
+  if(d.updated_at)h+='<p class="muted" style="font-size:12px">עודכן: '+esc(fmtDate(d.updated_at))+'</p>';
+  return h;
+}
+function saveTech(id,key,val){
+  var p=findP(id);if(!p)return;
+  var c=JSON.parse(JSON.stringify(p.contacts||{}));c._tech=c._tech||{};
+  c._tech[key]=(val===""?null:val);c._tech.updated_at=new Date().toISOString();
+  if(key==="status"&&!c._tech.date)c._tech.date=today();
+  p.contacts=c;touchAndUpdate(id,{contacts:c}).then(function(){if(key==="status"&&openId===id&&tab==="tech"){render();bindProjects();}});
 }
 function saveProc(id,kind,key,val){
   var p=findP(id);if(!p)return;
@@ -1267,6 +1288,7 @@ function bindDetail(){
     if(b.getAttribute("data-confirm")){delFile(b.dataset.pid,b.dataset.delf,b.dataset.path);}
     else{b.setAttribute("data-confirm","1");b.textContent="בטוח? מחק";setTimeout(function(){b.removeAttribute("data-confirm");b.textContent="מחק";},2500);}
   };});
+  document.querySelectorAll("[data-tech]").forEach(function(e){e.onchange=function(){saveTech(e.dataset.pid,e.dataset.tech,e.value);};});
   document.querySelectorAll("[data-proc]").forEach(function(e){e.onchange=function(){saveProc(e.dataset.pid,e.dataset.proc,e.dataset.pk,e.value);};});
   document.querySelectorAll("[data-fin]").forEach(function(e){e.onchange=function(){saveFinance(e.dataset.pid,e.dataset.fin,e.value);};});
   document.querySelectorAll("[data-copy]").forEach(function(b){b.onclick=function(){var t=b.dataset.copy;if(navigator.clipboard)navigator.clipboard.writeText(t).then(function(){toast("הועתק");}).catch(function(){toast(t);});else toast(t);};});
