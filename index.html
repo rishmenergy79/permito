@@ -542,7 +542,10 @@ function render(){
   el("body").innerHTML = view==="projects"?projectsHTML():queueHTML();
 }
 /* ===== ייבוא מאקסל (master בלבד) — גרסה 2: התאמה לפי מספר הזמנה או מספר PV, השלמת שדות ריקים ===== */
-var IMP_MAP={"הזמנה":"order_no","שם לקוח":"name","מס. לקוח":"client_no","סוג מבנה":"ptype","סטטוס במאורות":"mstatus","כתובת חיבור מערכת":"address","הזמנה מס PV":"pv_order","מספר הזמנה PV":"pv_order","שם סוכן":"agent","תאור סוג לקוח מאורות":"client_kind","פרטים":"details","תאור האתר":"site_desc","תאריך פתיחה":"opened_at","תאריך הגשה":"submitted_at","ת. פתיחת לקוח חח\"י":"iec_open_at","ת. קבלת PV":"pv_received_at","תום תקופת הPV":"pv_expiry","הספק DC":"kw","הספק:DC":"kw","כמות קילו וואט":"kw_qty","PV (AC)":"pv_ac","PV (AC) שהתקבל מחח\"י":"pv_ac","הספק אגירה":"storage_kw","גודל חיבור קיים":"conn_existing","גודל חיבור לקוח קיים":"conn_existing","גודל חיבור נדרש":"conn_required","גודל חיבור לקוח נדרש":"conn_required","מס' הגדלה":"increase_no","מס' הגדלה/ ח.חדש":"increase_no","סטטוס הגדלה":"increase_status","סוג ממיר":"inverter"};
+/* עמודות שקיימות בטבלת הפרויקטים — כל שדה אחר מהאקסל פשוט לא נכתב */
+var PROJ_COLS={order_no:1,name:1,developer:1,client_no:1,ptype:1,committee:1,gush:1,helka:1,address:1,site_desc:1,pv_order:1,request_no:1,mstatus:1,state:1,agent:1,client_kind:1,details:1,kw:1,kw_qty:1,pv_ac:1,storage_kw:1,conn_existing:1,conn_required:1,increase_no:1,increase_status:1,inverter:1,opened_at:1,submitted_at:1,iec_open_at:1,pv_received_at:1,pv_expiry:1,next_date:1,notes:1,stages:1,docs:1,contacts:1,source:1,updated_by:1,updated_at:1};
+function impOnlyCols(o){var r={};for(var k in o)if(PROJ_COLS[k])r[k]=o[k];return r;}
+var IMP_MAP={"לקוח רישוי?":"__lic","הזמנה":"order_no","שם לקוח":"name","מס. לקוח":"client_no","סוג מבנה":"ptype","סטטוס במאורות":"mstatus","כתובת חיבור מערכת":"address","הזמנה מס PV":"pv_order","מספר הזמנה PV":"pv_order","שם סוכן":"agent","תאור סוג לקוח מאורות":"client_kind","פרטים":"details","תאור האתר":"site_desc","תאריך פתיחה":"opened_at","תאריך הגשה":"submitted_at","ת. פתיחת לקוח חח\"י":"iec_open_at","ת. קבלת PV":"pv_received_at","תום תקופת הPV":"pv_expiry","הספק DC":"kw","הספק:DC":"kw","כמות קילו וואט":"kw_qty","PV (AC)":"pv_ac","PV (AC) שהתקבל מחח\"י":"pv_ac","הספק אגירה":"storage_kw","גודל חיבור קיים":"conn_existing","גודל חיבור לקוח קיים":"conn_existing","גודל חיבור נדרש":"conn_required","גודל חיבור לקוח נדרש":"conn_required","מס' הגדלה":"increase_no","מס' הגדלה/ ח.חדש":"increase_no","סטטוס הגדלה":"increase_status","סוג ממיר":"inverter"};
 var IMP_DATES={opened_at:1,submitted_at:1,iec_open_at:1,pv_received_at:1,pv_expiry:1};
 /* שדות שמותר להשלים בפרויקט קיים — רק כשהם ריקים בו */
 var IMP_FILL=["pv_order","client_no","address","agent","client_kind","details","kw","storage_kw","inverter","pv_ac","pv_received_at","pv_expiry","conn_existing","conn_required","increase_no","increase_status","iec_open_at","opened_at","submitted_at"];
@@ -574,8 +577,10 @@ function impRows(aoa){
   for(i=hi+1;i<aoa.length;i++){
     var r=aoa[i],o={},any=false;
     for(var j=0;j<fields.length;j++){
-      if(!fields[j]||o[fields[j]])continue;
+      if(!fields[j])continue;
       var v=impCell(fields[j],r[j]);
+      /* עמודה כפולה: לא דורסים ערך קיים, אלא אם הקיים הוא רק קוד מספרי והחדש טקסט */
+      if(o[fields[j]]&&!(v!==""&&/^\d{1,2}$/.test(o[fields[j]])&&!/^\d+$/.test(v)))continue;
       if(v!=="")any=true;
       o[fields[j]]=v;
     }
@@ -613,7 +618,7 @@ function impReplPatch(p,o){
   return n?{patch:patch,old:old}:null;
 }
 function impClassify(rows,removed){
-  var res={add:[],frozenNew:[],existing:0,fill:[],choose:[],existingChanged:[],backActive:[],noKey:[],nameOnly:0,dup:[],other:0},seen={};
+  var res={addOther:[],add:[],frozenNew:[],existing:0,fill:[],choose:[],existingChanged:[],backActive:[],noKey:[],nameOnly:0,dup:[],other:0},seen={};
   var bySO={},byPV={},byName={};
   projects.forEach(function(p){
     bySO[String(p.order_no)]=p;
@@ -621,7 +626,7 @@ function impClassify(rows,removed){
     var nn=impNameN(p.name);(byName[nn]=byName[nn]||[]).push(p);
   });
   rows.forEach(function(o){
-    if(!impRelevant(o.ptype)){res.other++;return;}
+    var rel=impRelevant(o.ptype)||String(o.__lic||"").trim()==="כן";
     var so=String(o.order_no||"").trim(),pvs=impPVs(o.pv_order),st=impStateOf(o.mstatus),p=null;
     if(so&&bySO[so])p=bySO[so];
     for(var i=0;!p&&i<pvs.length;i++)if(byPV[pvs[i]])p=byPV[pvs[i]];
@@ -632,15 +637,17 @@ function impClassify(rows,removed){
       return;
     }
     var key=so||(pvs[0]?"PV"+pvs[0]:"");
-    if(!key){ if(byName[impNameN(o.name)])res.nameOnly++; else res.noKey.push(o); return; }
+    if(!key){ if(!rel){res.other++;return;} if(byName[impNameN(o.name)])res.nameOnly++; else res.noKey.push(o); return; }
     if(seen[key]){res.dup.push(o);return;}
     seen[key]=1;
     /* פרויקט באותו שם ואותו סוג מבנה שעדיין אין לו מספר PV — כנראה אותו פרויקט */
     var cands=(byName[impNameN(o.name)]||[]).filter(function(q){return q.ptype===o.ptype&&!impPVs(q.pv_order).length&&!(so&&q.order_no!==so&&/^SO/.test(so));});
     if(cands.length){res.choose.push({o:o,cands:cands,key:key,st:st});return;}
     if(removed[key]){if(st==="active")res.backActive.push(o);return;}
-    if(st!=="active"){res.frozenNew.push({o:o,st:st});return;}
-    o.__key=key;res.add.push(o);
+    if(st!=="active"){ if(!rel){res.other++;return;} res.frozenNew.push({o:o,st:st});return;}
+    o.__key=key;
+    if(!rel){res.addOther.push(o);return;}
+    res.add.push(o);
   });
   return res;
 }
@@ -651,7 +658,7 @@ function impBuildRecord(o,stamp,uid){
   var g=impGushHelka(o.address);if(g.gush){r.gush=g.gush;r.helka=g.helka;}
   r.name=r.name||"";r.developer=r.name;r.state="active";r.stages=impStages(o);r.docs={};r.contacts={};r.source="xlsx-"+stamp;
   if(uid){r.updated_by=uid;}
-  return r;
+  return impOnlyCols(r);
 }
 function impRemovedMap(val){
   var m={};
@@ -721,12 +728,14 @@ function openImport(){
           'שורות בקובץ: '+rows.length+' · מתוכן מסוגי מבנה אחרים (לא נוגעים): '+c.other+'<br>'+
           'קיימים ב-Permito: '+c.existing+' · מתוכם שונים באקסל (לבחירתך): <b style="color:#8A5A00">'+c.fill.length+'</b><br>'+
           'מספר PV חדש ללקוח קיים (לבחירתך): <b style="color:#8A5A00">'+c.choose.length+'</b><br>'+
-          '<b style="color:#2E6B4A">חדשים פעילים להוספה: '+c.add.length+'</b><br>'+
+          '<b style="color:#2E6B4A">חדשים פעילים להוספה: '+c.add.length+'</b>'+(c.addOther.length?' · מסוגי מבנה אחרים: '+c.addOther.length:'')+'<br>'+
           'חדשים מוקפאים/מבוטלים (לא יתווספו): '+c.frozenNew.length+'<br>'+
           'בלי מספר, ויש לקוח באותו שם (מדולגים): '+c.nameOnly+'<br>'+
           'קיימים שבאקסל מוקפאים/מבוטלים (לא שונו, לבדיקה): '+c.existingChanged.length+'<br>'+
           'חזרו לפעילים ומופיעים ברשימת ההסרות (לבדיקה): '+c.backActive.length+'<br>'+
           '<span style="color:#A33228">בלי מספר וללא לקוח מוכר (דולגו): '+c.noKey.length+'</span> · כפולים: '+c.dup.length+'</div>';
+        if(c.addOther.length){h+='<details style="margin-top:8px" open><summary style="font-weight:700;color:#8A5A00;cursor:pointer">חדשים מסוגי מבנה אחרים ('+c.addOther.length+') — לא יתווספו אלא אם תסמן</summary><div style="max-height:220px;overflow:auto;font-size:13px">'+
+          c.addOther.map(function(o,i){return '<label style="display:block;padding:3px 0;border-bottom:1px solid #eee"><input type="checkbox" data-impother="'+i+'"'+(c.addOther.length<=20?" checked":"")+'> '+esc(o.__key)+' · '+esc(o.name||"")+' · '+esc(o.ptype||"ללא סוג")+' · '+esc(o.mstatus||"")+'</label>';}).join("")+'</div></details>';}
         h+=impFillHTML(c)+impChooseHTML(c)+impList("חדשים להוספה",c.add,"#2E6B4A")+impList("חזרו לפעילים - לבדיקה",c.backActive,"#A33228")+impList("קיימים שמוקפאים באקסל - לבדיקה",c.existingChanged,"#A33228")+impList("בלי מספר וללא לקוח מוכר",c.noKey,"#A33228")+impList("חדשים מוקפאים/מבוטלים",c.frozenNew,"#7B8479");
         h+='<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="impGo">אשר וכתוב</button><button class="btn btn-sm" id="impCancel2">סגור</button></div><div id="impMsg2" style="margin-top:10px"></div>';
         impBox(h);
@@ -740,6 +749,7 @@ function openImport(){
 function impCommit(){
   var c=impCtx.c,msg=document.getElementById("impMsg2"),btn=document.getElementById("impGo");
   var stamp=new Date().toISOString().slice(0,10),ups=[],adds=c.add.slice(),used={},err=null;
+  document.querySelectorAll("[data-impother]").forEach(function(x){if(x.checked)adds.push(c.addOther[+x.dataset.impother]);});
   document.querySelectorAll("[data-impfill]").forEach(function(x){var f=c.fill[+x.dataset.impfill];
     if(x.value==="fill"&&f.patch)ups.push({id:f.p.order_no,patch:f.patch});
     if(x.value==="repl")ups.push({id:f.p.order_no,patch:f.repl.patch,old:f.repl.old});});
