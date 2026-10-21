@@ -284,12 +284,15 @@ function uid(p){return p+Math.random().toString(36).slice(2,9);}
 /* ============================================================
    אימות + שער תפקיד
    ============================================================ */
+var _recovery=/type=recovery/.test(location.hash||"");
+function pwRedirect(){return location.origin+location.pathname;}
 function boot(){
   if(!licenseOK()){ renderLicenseError(); return; }
   sb.auth.getSession().then(function(r){
     if(r.data.session) afterLogin(); else renderLogin();
   });
   sb.auth.onAuthStateChange(function(ev){
+    if(ev==="PASSWORD_RECOVERY"){ _recovery=true; renderSetPassword(); return; }
     if(ev==="SIGNED_OUT"){ try{sb.removeAllChannels();}catch(e){} me={id:null}; renderLogin(); }
   });
 }
@@ -304,7 +307,7 @@ function afterLogin(){
         if(res.error){ renderDiag(res.error.message, rpErr, "profiles-select"); return; }
         if(!res.data){ renderDiag("הפרופיל לא הוחזר מה-API (0 שורות)", rpErr, "RLS/schema"); return; }
         me.role=res.data.active===false?"pending":(res.data.role||"pending"); me.name=res.data.full_name||u.email;
-        if(res.data.must_set_password){ renderSetPassword(); return; }
+        if(_recovery||res.data.must_set_password){ renderSetPassword(); return; }
         if(me.role==="pending") renderPending();
         else startApp();
       });
@@ -334,11 +337,22 @@ function renderLogin(errMsg){
    '<label class="fl" for="pw">סיסמה</label><input class="f" id="pw" type="password" autocomplete="current-password">'+
    '<div id="autherr"></div>'+
    '<div style="margin-top:16px"><button class="btn btn-primary" id="btn-signin">התחברות</button></div>'+
+   '<div style="text-align:center;margin-top:10px"><button class="link" id="btn-forgot">שכחתי סיסמה</button></div>'+
    '<div style="text-align:center;margin-top:8px;font-size:12.5px" class="muted">משתמשים נוספים נוצרים על ידי מנהל המערכת</div>'+
    '</div></div></div>';
   el("root").innerHTML=h;
   if(errMsg) el("autherr").innerHTML='<div class="err">'+esc(errMsg)+'</div>';
   el("btn-signin").onclick=doSignIn;
+  el("btn-forgot").onclick=function(){
+    var email=(el("em").value||"").trim();
+    if(!email){el("autherr").innerHTML='<div class="err">הקלד את האימייל שלך ולחץ שוב על "שכחתי סיסמה"</div>';el("em").focus();return;}
+    el("btn-forgot").textContent="שולח…";
+    sb.auth.resetPasswordForEmail(email,{redirectTo:pwRedirect()}).then(function(r){
+      el("btn-forgot").textContent="שכחתי סיסמה";
+      if(r.error){el("autherr").innerHTML='<div class="err">'+esc(r.error.message)+'</div>';return;}
+      el("autherr").innerHTML='<div class="ok">אם האימייל רשום במערכת, נשלח אליו קישור לאיפוס סיסמה. בדוק גם בדואר זבל.</div>';
+    });
+  };
   el("pw").addEventListener("keydown",function(e){if(e.key==="Enter")doSignIn();});
 }
 function renderSignup(){
@@ -378,7 +392,7 @@ function authMsg(m){m=String(m||"");if(/Invalid login/.test(m))return "אימי�
 function renderSetPassword(){
   el("root").innerHTML='<div class="center"><div class="card">'+
    '<div class="brandbig">Permito</div><div class="brandsub">בחירת סיסמה אישית</div>'+
-   '<p class="muted" style="font-size:13px;text-align:center;margin-bottom:6px">כניסה ראשונה — בחר סיסמה קבועה משלך שרק אתה מכיר.</p>'+
+   '<p class="muted" style="font-size:13px;text-align:center;margin-bottom:6px">'+(_recovery?'איפוס סיסמה — בחר סיסמה חדשה.':'כניסה ראשונה — בחר סיסמה קבועה משלך שרק אתה מכיר.')+'</p>'+
    '<label class="fl" for="np1">סיסמה חדשה</label><input class="f" id="np1" type="password" autocomplete="new-password">'+
    '<label class="fl" for="np2">אישור סיסמה</label><input class="f" id="np2" type="password" autocomplete="new-password">'+
    '<div id="autherr"></div>'+
@@ -392,6 +406,7 @@ function renderSetPassword(){
     el("np-save").textContent="שומר…";
     sb.auth.updateUser({password:a}).then(function(r){
       if(r.error){el("np-save").textContent="שמירה וכניסה";el("autherr").innerHTML='<div class="err">'+esc(r.error.message)+'</div>';return;}
+      _recovery=false; try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
       sb.rpc("clear_must_set_password").then(function(){ afterLogin(); }).catch(function(){ afterLogin(); });
     });
   };
@@ -405,6 +420,29 @@ function renderPending(){
   el("btn-out").onclick=function(){sb.auth.signOut();};
 }
 function signOut(){sb.auth.signOut();}
+function openChangePw(){
+  impBox('<h3 style="margin:0 0 10px">החלפת סיסמה</h3>'+
+   '<label class="fl" for="cp0">סיסמה נוכחית</label><input class="f" id="cp0" type="password" autocomplete="current-password">'+
+   '<label class="fl" for="cp1">סיסמה חדשה</label><input class="f" id="cp1" type="password" autocomplete="new-password">'+
+   '<label class="fl" for="cp2">אישור סיסמה חדשה</label><input class="f" id="cp2" type="password" autocomplete="new-password">'+
+   '<div id="cperr" style="margin-top:8px"></div>'+
+   '<div style="margin-top:14px;display:flex;gap:8px"><button class="btn btn-primary" id="cpsave">שמירה</button><button class="btn btn-sm" id="cpcancel">ביטול</button></div>');
+  el("cpcancel").onclick=impClose;
+  el("cpsave").onclick=function(){
+    var o=el("cp0").value||"",a=el("cp1").value||"",b=el("cp2").value||"",er=el("cperr");
+    if(!o){er.innerHTML='<div class="err">הקלד את הסיסמה הנוכחית</div>';return;}
+    if(a.length<6){er.innerHTML='<div class="err">סיסמה של 6 תווים לפחות</div>';return;}
+    if(a!==b){er.innerHTML='<div class="err">הסיסמאות לא תואמות</div>';return;}
+    el("cpsave").textContent="שומר…";
+    sb.auth.signInWithPassword({email:me.email,password:o}).then(function(r){
+      if(r.error){el("cpsave").textContent="שמירה";er.innerHTML='<div class="err">הסיסמה הנוכחית שגויה</div>';return;}
+      return sb.auth.updateUser({password:a}).then(function(r2){
+        if(r2.error){el("cpsave").textContent="שמירה";er.innerHTML='<div class="err">'+esc(r2.error.message)+'</div>';return;}
+        impClose();toast("הסיסמה הוחלפה");
+      });
+    });
+  };
+}
 
 /* ============================================================
    טעינת נתונים
@@ -488,6 +526,7 @@ function render(){
     '<div class="who"><span>'+esc(me.name||me.email||"")+'</span><span class="rolechip">'+esc(ROLES[me.role]||me.role)+'</span>'+
     '<button class="btn btn-sm" data-a="export">ייצוא</button>'+(me.role==="master"?'<button class="btn btn-sm" data-a="import">ייבוא מאקסל</button>':'')+
     (me.role==="master"?'<button class="btn btn-sm" data-a="users">משתמשים</button>':'')+
+    '<button class="btn btn-sm btn-ghost" data-a="mypw">החלפת סיסמה</button>'+
     '<button class="btn btn-sm btn-ghost" data-a="signout">יציאה</button></div></header>';
   if(view==="users" && me.role==="master"){ h+='<div id="body"></div></div>'; el("root").innerHTML=h; bindTop(); renderUsers(); return; }
   h+=myMenuHTML()+'<div class="tiles" id="tiles"></div>'+
@@ -726,6 +765,7 @@ function bindTop(){
   document.querySelectorAll("[data-a]").forEach(function(b){b.onclick=function(){
     var a=b.dataset.a;
     if(a==="signout")signOut();
+    else if(a==="mypw")openChangePw();
     else if(a==="export")doExport();else if(a==="import")openImport();
     else if(a==="users"){view="users";render();}
   };});
@@ -1234,7 +1274,7 @@ function renderUsers(){
          '<td><select data-urole="'+esc(u.id)+'"'+(self?" disabled":"")+'>';
       ["pending","viewer","editor","master"].forEach(function(rr){h+='<option value="'+rr+'"'+(u.role===rr?" selected":"")+'>'+ROLES[rr]+'</option>';});
       h+='</select></td><td><input type="checkbox" data-uactive="'+esc(u.id)+'"'+(u.active!==false?" checked":"")+(self?" disabled":"")+'></td>'+
-         '<td class="acts">'+(self?'<span class="muted" style="font-size:12px">זה אתה</span>':'<button class="copybtn" data-pw="'+esc(u.id)+'">איפוס סיסמה</button> <button class="copybtn danger" data-du="'+esc(u.id)+'">מחיקה</button>')+'</td></tr>';
+         '<td class="acts">'+(self?'<span class="muted" style="font-size:12px">זה אתה</span>':'<button class="copybtn" data-pw="'+esc(u.id)+'">איפוס סיסמה</button> <button class="copybtn" data-pwmail="'+esc(u.email||"")+'">שלח קישור איפוס</button> <button class="copybtn danger" data-du="'+esc(u.id)+'">מחיקה</button>')+'</td></tr>';
     });
     h+='</tbody></table></div>';
     b.innerHTML=h;
@@ -1263,6 +1303,11 @@ function renderUsers(){
         adminCall("set_password",{user_id:uidv,password:np}).then(function(r){ if(!r.ok){toast("שגיאה: "+r.error);return;} pendingNotice={kind:"reset",email:uobj.email||"",pw:np}; renderUsers();});
       };
       cell.querySelector("[data-pwcancel]").onclick=function(){renderUsers();};
+    };});
+    b.querySelectorAll("[data-pwmail]").forEach(function(btn){btn.onclick=function(){
+      var em=btn.dataset.pwmail;if(!em){toast("למשתמש אין אימייל");return;}
+      btn.textContent="שולח…";
+      sb.auth.resetPasswordForEmail(em,{redirectTo:pwRedirect()}).then(function(r){btn.textContent="שלח קישור איפוס";toast(r.error?"שליחה נכשלה: "+r.error.message:"נשלח קישור איפוס אל "+em);});
     };});
     b.querySelectorAll("[data-du]").forEach(function(btn){btn.onclick=function(){
       if(btn.dataset.confirm){adminCall("delete",{user_id:btn.dataset.du}).then(function(r){toast(r.ok?"המשתמש נמחק":"שגיאה: "+r.error);renderUsers();});}
