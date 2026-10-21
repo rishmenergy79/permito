@@ -524,7 +524,7 @@ function render(){
     (meta.last_import?'<span class="stamp">נתוני אקסל מ-'+esc(fmtDate(meta.last_import))+(meta.rows?' · '+esc(meta.rows)+' שורות':'')+'</span>':'')+
     '</div>'+
     '<div class="who"><span>'+esc(me.name||me.email||"")+'</span><span class="rolechip">'+esc(ROLES[me.role]||me.role)+'</span>'+
-    '<button class="btn btn-sm" data-a="export">ייצוא</button>'+(me.role==="master"?'<button class="btn btn-sm" data-a="import">ייבוא מאקסל</button>':'')+
+    '<button class="btn btn-sm" data-a="export">ייצוא</button>'+(canWrite()?'<button class="btn btn-sm btn-primary" data-a="newp">➕ לקוח חדש</button><button class="btn btn-sm" data-a="import">ייבוא מאקסל</button>':'')+
     (me.role==="master"?'<button class="btn btn-sm" data-a="users">משתמשים</button>':'')+
     '<button class="btn btn-sm btn-ghost" data-a="mypw">החלפת סיסמה</button>'+
     '<button class="btn btn-sm btn-ghost" data-a="signout">יציאה</button></div></header>';
@@ -546,7 +546,8 @@ var IMP_MAP={"הזמנה":"order_no","שם לקוח":"name","מס. לקוח":"cl
 var IMP_DATES={opened_at:1,submitted_at:1,iec_open_at:1,pv_received_at:1,pv_expiry:1};
 /* שדות שמותר להשלים בפרויקט קיים — רק כשהם ריקים בו */
 var IMP_FILL=["pv_order","client_no","address","agent","client_kind","details","kw","storage_kw","inverter","pv_ac","pv_received_at","pv_expiry","conn_existing","conn_required","increase_no","increase_status","iec_open_at","opened_at","submitted_at"];
-var IMP_FILL_L={pv_order:"מספר PV",client_no:"מספר לקוח",address:"כתובת",agent:"סוכן",client_kind:"סוג לקוח",details:"פרטים",kw:"הספק DC",storage_kw:"הספק אגירה",inverter:"ממיר",pv_ac:"PV (AC)",pv_received_at:"קבלת PV",pv_expiry:"תום PV",conn_existing:"חיבור קיים",conn_required:"חיבור נדרש",increase_no:"מס׳ הגדלה",increase_status:"סטטוס הגדלה",iec_open_at:"פתיחת לקוח",opened_at:"פתיחה",submitted_at:"הגשה"};
+var IMP_REPL=["name","ptype","mstatus"].concat(IMP_FILL);
+var IMP_FILL_L={name:"שם לקוח",ptype:"סוג מבנה",mstatus:"סטטוס במאורות",pv_order:"מספר PV",client_no:"מספר לקוח",address:"כתובת",agent:"סוכן",client_kind:"סוג לקוח",details:"פרטים",kw:"הספק DC",storage_kw:"הספק אגירה",inverter:"ממיר",pv_ac:"PV (AC)",pv_received_at:"קבלת PV",pv_expiry:"תום PV",conn_existing:"חיבור קיים",conn_required:"חיבור נדרש",increase_no:"מס׳ הגדלה",increase_status:"סטטוס הגדלה",iec_open_at:"פתיחת לקוח",opened_at:"פתיחה",submitted_at:"הגשה"};
 function impNormH(s){return String(s==null?"":s).replace(/[^\p{L}\p{N}]/gu,"").toLowerCase();}
 var IMP_MAPN=(function(){var o={};Object.keys(IMP_MAP).forEach(function(k){o[impNormH(k)]=IMP_MAP[k];});return o;})();
 function impCell(field,v){
@@ -604,6 +605,13 @@ function impPatch(p,o){
   IMP_FILL.forEach(function(k){if(o[k]&&(p[k]==null||String(p[k]).trim()==="")){patch[k]=o[k];n++;}});
   return n?patch:null;
 }
+/* החלפה: כל שדה שיש לו ערך באקסל ושונה מהקיים. שדה ריק באקסל — הערך הקיים נשמר. שלבים, מסמכים, אנשי קשר, רכש, הערות ופרטי רישוי לא נוגעים בהם */
+function impReplPatch(p,o){
+  var patch={},old={},n=0;
+  IMP_REPL.forEach(function(k){var v=o[k];if(!v)return;var cur=p[k]==null?"":String(p[k]).trim();if(cur!==String(v).trim()){patch[k]=v;old[k]=cur;n++;}});
+  if(o.mstatus){var st=impStateOf(o.mstatus);if(stateOf(p)!==st){patch.state=st;old.state=stateOf(p);n++;}}
+  return n?{patch:patch,old:old}:null;
+}
 function impClassify(rows,removed){
   var res={add:[],frozenNew:[],existing:0,fill:[],choose:[],existingChanged:[],backActive:[],noKey:[],nameOnly:0,dup:[],other:0},seen={};
   var bySO={},byPV={},byName={};
@@ -619,8 +627,8 @@ function impClassify(rows,removed){
     for(var i=0;!p&&i<pvs.length;i++)if(byPV[pvs[i]])p=byPV[pvs[i]];
     if(p){
       res.existing++;
-      if(st!=="active"&&stateOf(p)!==st)res.existingChanged.push({o:o,st:st});
-      var pt=impPatch(p,o);if(pt)res.fill.push({p:p,o:o,patch:pt});
+      var fl=impPatch(p,o),rp=impReplPatch(p,o);
+      if(rp)res.fill.push({p:p,o:o,patch:fl,repl:rp});
       return;
     }
     var key=so||(pvs[0]?"PV"+pvs[0]:"");
@@ -669,10 +677,15 @@ function impList(title,arr,color){
 }
 function impFillHTML(c){
   if(!c.fill.length)return"";
-  var h='<details style="margin-top:8px" open><summary style="font-weight:700;color:#2E6B4A;cursor:pointer">השלמת שדות ריקים בפרויקטים קיימים ('+c.fill.length+')</summary><div style="max-height:260px;overflow:auto;font-size:13px"><label style="display:block;padding:4px 0"><input type="checkbox" id="impFillAll" checked> סמן הכל</label>';
+  var h='<details style="margin-top:8px" open><summary style="font-weight:700;color:#8A5A00;cursor:pointer">הזמנות שכבר קיימות ושונות באקסל ('+c.fill.length+') — מה לעשות?</summary>'+
+    '<div style="font-size:12.5px;color:#4D5650;margin:6px 0">"השלם ריקים" ממלא רק שדות ריקים. "החלף" מעדכן לפי האקסל, אבל כל שדה שאין לו ערך באקסל נשאר כמו שמילאת, ושלבים, מסמכים, אנשי קשר, רכש והערות לא משתנים. הערכים הקודמים נשמרים בלשונית ההתכתבויות של הפרויקט.</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><span style="font-size:13px">לכולם:</span><button class="btn btn-sm" data-impall="keep">השאר</button><button class="btn btn-sm" data-impall="fill">השלם ריקים</button><button class="btn btn-sm" data-impall="repl">החלף</button></div>'+
+    '<div style="max-height:320px;overflow:auto;font-size:13px">';
   c.fill.forEach(function(x,i){
-    var parts=Object.keys(x.patch).map(function(k){return IMP_FILL_L[k]+": "+x.patch[k];}).join(" · ");
-    h+='<label style="display:block;padding:3px 0;border-bottom:1px solid #eee"><input type="checkbox" data-impfill="'+i+'" checked> <b>'+esc(x.p.order_no)+'</b> · '+esc(x.p.name||"")+'<br><span style="color:#4D5650">'+esc(parts)+'</span></label>';
+    var d=Object.keys(x.repl.patch).map(function(k){return (IMP_FILL_L[k]||(k==="state"?"מצב":k))+": "+(x.repl.old[k]||"ריק")+" ← "+x.repl.patch[k];}).join(" · ");
+    var def=x.patch?"fill":"keep";
+    h+='<div style="padding:6px 0;border-bottom:1px solid #eee"><b>'+esc(x.p.order_no)+'</b> · '+esc(x.p.name||"")+'<br><span style="color:#4D5650">'+esc(d)+'</span><br>'+
+      '<select data-impfill="'+i+'" style="margin-top:4px"><option value="keep"'+(def==="keep"?" selected":"")+'>השאר כמו שהוא</option>'+(x.patch?'<option value="fill" selected>השלם רק שדות ריקים</option>':'')+'<option value="repl">החלף בנתוני האקסל</option></select></div>';
   });
   return h+'</div></details>';
 }
@@ -690,7 +703,7 @@ function impChooseHTML(c){
 }
 var impCtx=null;
 function openImport(){
-  if(me.role!=="master"){toast("ייבוא זמין למנהל-על בלבד");return;}
+  if(!canWrite()){toast("ייבוא זמין לעורך או למנהל-על בלבד");return;}
   impBox('<h3 style="margin:0 0 8px">ייבוא מאקסל</h3><p style="margin:0 0 12px;color:#4D5650">נקראים רק סוגי המבנה של Permito. פרויקט קיים מזוהה לפי מספר הזמנה או מספר PV. בפרויקט קיים רק משלימים שדות ריקים — שום ערך קיים לא נדרס, ושלבים/מסמכים/מצב לא משתנים. שום דבר לא נכתב עד לאישור.</p><input type="file" id="impFile" accept=".xlsx,.xls"><div id="impMsg" style="margin-top:10px"></div><div style="margin-top:14px"><button class="btn btn-sm" id="impCancel">סגור</button></div>');
   document.getElementById("impCancel").onclick=impClose;
   document.getElementById("impFile").onchange=function(e){
@@ -706,7 +719,7 @@ function openImport(){
         impCtx={c:c,file:f.name,rows:rows.length,removedRaw:r.data&&r.data.value};
         var h='<h3 style="margin:0 0 8px">תצוגה מקדימה</h3><div style="font-size:15px">'+
           'שורות בקובץ: '+rows.length+' · מתוכן מסוגי מבנה אחרים (לא נוגעים): '+c.other+'<br>'+
-          'קיימים ב-Permito: '+c.existing+' · מתוכם עם שדות ריקים להשלמה: <b style="color:#2E6B4A">'+c.fill.length+'</b><br>'+
+          'קיימים ב-Permito: '+c.existing+' · מתוכם שונים באקסל (לבחירתך): <b style="color:#8A5A00">'+c.fill.length+'</b><br>'+
           'מספר PV חדש ללקוח קיים (לבחירתך): <b style="color:#8A5A00">'+c.choose.length+'</b><br>'+
           '<b style="color:#2E6B4A">חדשים פעילים להוספה: '+c.add.length+'</b><br>'+
           'חדשים מוקפאים/מבוטלים (לא יתווספו): '+c.frozenNew.length+'<br>'+
@@ -715,10 +728,10 @@ function openImport(){
           'חזרו לפעילים ומופיעים ברשימת ההסרות (לבדיקה): '+c.backActive.length+'<br>'+
           '<span style="color:#A33228">בלי מספר וללא לקוח מוכר (דולגו): '+c.noKey.length+'</span> · כפולים: '+c.dup.length+'</div>';
         h+=impFillHTML(c)+impChooseHTML(c)+impList("חדשים להוספה",c.add,"#2E6B4A")+impList("חזרו לפעילים - לבדיקה",c.backActive,"#A33228")+impList("קיימים שמוקפאים באקסל - לבדיקה",c.existingChanged,"#A33228")+impList("בלי מספר וללא לקוח מוכר",c.noKey,"#A33228")+impList("חדשים מוקפאים/מבוטלים",c.frozenNew,"#7B8479");
-        h+='<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="impGo">אשר וכתוב</button><button class="btn btn-sm" id="impCancel2">סגור</button></div><div id="impMsg2" style="margin-top:10px"></div>';
+        h+='<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="impGo">אשר וכתוב</button><button class="btn btn-sm" id="impCancel2">סגור</button></div><div id="impMsg2" style="margin-top:10px"></div>';
         impBox(h);
         document.getElementById("impCancel2").onclick=impClose;
-        var all=document.getElementById("impFillAll");if(all)all.onchange=function(){document.querySelectorAll("[data-impfill]").forEach(function(x){x.checked=all.checked;});};
+        document.querySelectorAll("[data-impall]").forEach(function(bt){bt.onclick=function(){var v=bt.dataset.impall;document.querySelectorAll("[data-impfill]").forEach(function(x){if(v==="fill"&&!x.querySelector('option[value="fill"]'))x.value="keep";else x.value=v;});};});
         document.getElementById("impGo").onclick=impCommit;
       });
     }).catch(function(err){msg.textContent="שגיאה: "+(err&&err.message||err);});
@@ -727,7 +740,9 @@ function openImport(){
 function impCommit(){
   var c=impCtx.c,msg=document.getElementById("impMsg2"),btn=document.getElementById("impGo");
   var stamp=new Date().toISOString().slice(0,10),ups=[],adds=c.add.slice(),used={},err=null;
-  document.querySelectorAll("[data-impfill]").forEach(function(x){if(x.checked){var f=c.fill[+x.dataset.impfill];ups.push({id:f.p.order_no,patch:f.patch});}});
+  document.querySelectorAll("[data-impfill]").forEach(function(x){var f=c.fill[+x.dataset.impfill];
+    if(x.value==="fill"&&f.patch)ups.push({id:f.p.order_no,patch:f.patch});
+    if(x.value==="repl")ups.push({id:f.p.order_no,patch:f.repl.patch,old:f.repl.old});});
   document.querySelectorAll("[data-impch]").forEach(function(s){
     var x=c.choose[+s.dataset.impch],v=s.value;if(!v)return;
     if(v==="__new"){x.o.__key=x.key;adds.push(x.o);return;}
@@ -741,17 +756,20 @@ function impCommit(){
   var recs=adds.map(function(o){return impBuildRecord(o,stamp,me.id);});
   var added=0,updated=0,p=Promise.resolve();
   for(var i=0;i<recs.length;i+=50)(function(chunk){p=p.then(function(){return sb.from("projects").insert(chunk).then(function(r){if(r.error)throw r.error;added+=chunk.length;msg.textContent="נוספו "+added+" מתוך "+recs.length+"…";});});})(recs.slice(i,i+50));
-  ups.forEach(function(u){p=p.then(function(){var patch=Object.assign({},u.patch,{updated_at:new Date().toISOString(),updated_by:me.id});return sb.from("projects").update(patch).eq("order_no",u.id).then(function(r){if(r.error)throw r.error;updated++;msg.textContent="עודכנו "+updated+" מתוך "+ups.length+"…";});});});
+  ups.forEach(function(u){p=p.then(function(){var patch=Object.assign({},u.patch,{updated_at:new Date().toISOString(),updated_by:me.id});return sb.from("projects").update(patch).eq("order_no",u.id).then(function(r){if(r.error)throw r.error;updated++;msg.textContent="עודכנו "+updated+" מתוך "+ups.length+"…";
+      if(u.old){var sm="עדכון מאקסל ("+impCtx.file+"). ערכים קודמים: "+Object.keys(u.old).map(function(k){return (IMP_FILL_L[k]||(k==="state"?"מצב":k))+": "+(u.old[k]||"ריק");}).join(" · ");
+        return sb.from("project_log").insert({order_no:u.id,log_date:today(),direction:"in",contact:"ייבוא אקסל",summary:sm,created_by:me.id}).then(function(){});}
+    });});});
   p.then(function(){
     var val=impCtx.removedRaw,list=Array.isArray(val)?val.slice():(val&&Array.isArray(val.items)?val.items.slice():null);
     if(c.frozenNew.length&&list){
       c.frozenNew.forEach(function(x){list.push({order_no:x.o.order_no||("PV"+(impPVs(x.o.pv_order)[0]||"")),state:x.st});});
       var nv=Array.isArray(val)?list:Object.assign({},val,{items:list});
-      return sb.from("meta").upsert({key:"removed",value:nv});
+      return sb.from("meta").upsert({key:"removed",value:nv}).then(function(){},function(){});
     }
   }).then(function(){
     var old=meta||{};
-    return sb.from("meta").upsert({key:"import",value:Object.assign({},old,{last_import:stamp,file:impCtx.file,rows:impCtx.rows,loaded:(old.loaded||0)+added,filled:updated})});
+    return sb.from("meta").upsert({key:"import",value:Object.assign({},old,{last_import:stamp,file:impCtx.file,rows:impCtx.rows,loaded:(old.loaded||0)+added,filled:updated})}).then(function(){},function(){});
   }).then(function(){return Promise.all([loadProjects(),loadMeta()]);}).then(function(){
     render();impClose();toast("נוספו "+added+" · הושלמו נתונים ב-"+updated);
   }).catch(function(e){
@@ -759,6 +777,43 @@ function impCommit(){
   });
 }
 /* ===== סוף ייבוא ===== */
+/* ===== פתיחת לקוח ידנית (עורך / מנהל-על) ===== */
+function openNewProject(){
+  if(!canWrite()){toast("אין הרשאה");return;}
+  function fi(id,l,t){return '<div class="field"><label>'+esc(l)+'</label><input class="f" id="np-'+id+'" type="'+(t||"text")+'"></div>';}
+  var opts=PTYPES.map(function(t){return '<option>'+esc(t)+'</option>';}).join("");
+  impBox('<h3 style="margin:0 0 10px">לקוח / פרויקט חדש</h3>'+
+    '<div class="fields">'+fi("name","שם לקוח *")+fi("so","מספר הזמנה (SO)")+fi("pv","מספר PV")+
+    '<div class="field"><label>סוג מבנה *</label><select class="f" id="np-ptype">'+opts+'</select></div>'+
+    fi("mstatus","סטטוס במאורות")+fi("address","כתובת")+fi("committee","ועדה מקומית")+fi("gush","גוש")+fi("helka","חלקה")+
+    fi("kw","הספק DC")+fi("storage_kw","הספק אגירה")+fi("agent","סוכן")+
+    '<div class="field wide"><label>הערות</label><textarea class="f" id="np-notes" rows="2"></textarea></div></div>'+
+    '<p class="muted" style="font-size:12px;margin:6px 0 0">חובה: שם לקוח וסוג מבנה. מומלץ מספר הזמנה או מספר PV, כדי שייבוא אקסל עתידי יזהה את הפרויקט ולא ייצור כפילות.</p>'+
+    '<div id="nperr" style="margin-top:8px"></div>'+
+    '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-primary" id="npsave">יצירה</button><button class="btn btn-sm" id="npcancel">ביטול</button></div>');
+  el("npcancel").onclick=impClose;
+  el("npsave").onclick=function(){
+    var g=function(k){return (el("np-"+k).value||"").trim();},er=el("nperr");
+    var name=g("name"),so=g("so").toUpperCase(),pvs=impPVs(g("pv")),pv=g("pv");
+    if(!name){er.innerHTML='<div class="err">שם לקוח חובה</div>';return;}
+    var dup=null;
+    if(so)dup=findP(so);
+    if(!dup&&pvs.length)projects.forEach(function(p){if(!dup&&impPVs(p.pv_order).some(function(n){return pvs.indexOf(n)>=0;}))dup=p;});
+    if(dup){er.innerHTML='<div class="err">ההזמנה כבר קיימת: '+esc(dup.order_no)+' · '+esc(dup.name||"")+'. לא נוצר כלום ולא שונה כלום. <button class="link" id="npgo">פתח את הקיימת</button></div>';
+      el("npgo").onclick=function(){impClose();gotoTask(dup.order_no,"info");};return;}
+    var id=so||(pvs[0]?"PV"+pvs[0]:"M"+Date.now().toString(36).toUpperCase());
+    var r={order_no:id,name:name,developer:name,ptype:g("ptype"),state:"active",stages:{},docs:{},contacts:{},source:"manual",updated_by:me.id,updated_at:new Date().toISOString()};
+    if(pv)r.pv_order=pv;
+    ["mstatus","address","committee","gush","helka","kw","storage_kw","agent","notes"].forEach(function(k){var v=g(k);if(v)r[k]=v;});
+    if(r.mstatus)r.state=impStateOf(r.mstatus);
+    el("npsave").textContent="יוצר…";
+    sb.from("projects").insert(r).then(function(res){
+      if(res.error){el("npsave").textContent="יצירה";er.innerHTML='<div class="err">היצירה נכשלה: '+esc(res.error.message)+'</div>';return;}
+      loadProjects().then(function(){impClose();toast("הפרויקט נוצר");gotoTask(id,"info");});
+    });
+  };
+}
+
 
 function bindTop(){
   document.querySelectorAll("[data-v]").forEach(function(b){b.onclick=function(){view=b.dataset.v;shown=PAGE;render();};});
@@ -766,6 +821,7 @@ function bindTop(){
     var a=b.dataset.a;
     if(a==="signout")signOut();
     else if(a==="mypw")openChangePw();
+    else if(a==="newp")openNewProject();
     else if(a==="export")doExport();else if(a==="import")openImport();
     else if(a==="users"){view="users";render();}
   };});
