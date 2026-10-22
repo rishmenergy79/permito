@@ -239,6 +239,7 @@ var STATE_ST={active:{l:"פעיל",c:"p-live"},frozen:{l:"מוקפא",c:"p-idle"
 var PCOLORS={green:{bg:"rgba(80,248,8,.16)",bd:"#50F808",l:"תקין"},red:{bg:"rgba(232,24,32,.14)",bd:"#E81820",l:"חריגה מלו\"ז"},blue:{bg:"rgba(0,144,248,.14)",bd:"#0090F8",l:"התקבל אישור"}};
 function tint(p){var m=PCOLORS[p&&p.status_color];return m?' style="background:'+m.bg+';border-inline-start:5px solid '+m.bd+'"':'';}
 function isConn(p){return !!(p&&p.contacts&&p.contacts._flags&&p.contacts._flags.connected);}
+function idsLine(p){var a=[];if(p.pv_order)a.push("PV "+p.pv_order);if(p.increase_no&&String(p.increase_no)!==String(p.pv_order||""))a.push("הגדלה "+p.increase_no);return a.join(" · ");}
 function syncedChip(p){return ((p&&p.is_synced)?'<span class="pill chip-sync">מסונכרן</span>':'')+(isConn(p)?' <span class="pill chip-sync">מערכת מחוברת</span>':'');}
 function colorCtl(p){var id=p.order_no,cur=p.status_color||'';var h='<span class="ctlwrap"><select class="ccol" data-color="'+esc(id)+'"><option value=""'+(cur===''?' selected':'')+'>ללא צבע</option>';for(var k in PCOLORS)h+='<option value="'+k+'"'+(cur===k?' selected':'')+'>'+PCOLORS[k].l+'</option>';h+='</select><label class="synctog"><input type="checkbox" data-sync="'+esc(id)+'"'+(p.is_synced?' checked':'')+'> מסונכרן</label><label class="synctog"><input type="checkbox" data-conn="'+esc(id)+'"'+(isConn(p)?' checked':'')+'> מחובר</label></span>';return h;}
 function setColor(id,v){var p=findP(id);if(p)p.status_color=v;render();touchAndUpdate(id,{status_color:v||null});}
@@ -963,7 +964,7 @@ function cardsHTML(slice){
   slice.forEach(function(p){
     var id=p.order_no,s=stateOf(p),cs=curStage(p),ms=missing(p),pe=pendingFor(id);
     h+='<div class="pcard'+(s!=="active"?" dim":"")+'" data-open="'+esc(id)+'"'+tint(p)+'><strong>'+esc(p.name||"—")+'</strong>';
-    h+='<small>'+esc(p.order_no||"")+(p.ptype?' · '+esc(p.ptype):'')+(p.kw?' · '+numloc(p.kw)+' kW':'')+'</small>'+(p.address?'<small class="addr">'+esc(p.address)+'</small>':'')+'<span class="rm">'+syncedChip(p);
+    h+='<small>'+esc(p.order_no||"")+(p.ptype?' · '+esc(p.ptype):'')+(p.kw?' · '+numloc(p.kw)+' kW':'')+'</small>'+(idsLine(p)?'<small class="mono">'+esc(idsLine(p))+'</small>':'')+(p.address?'<small class="addr">'+esc(p.address)+'</small>':'')+'<span class="rm">'+syncedChip(p);
     if(s!=="active")h+=pill(STATE_ST[s].c,STATE_ST[s].l);
     if(cs)h+=pill(projStatus(p).c,cs[1].label);
     if(p.mstatus)h+=pill("p-idle",p.mstatus);
@@ -981,14 +982,14 @@ function tableHTML(slice){
   var h='<div class="scroll-x"><table class="tbl ptable"><thead><tr><th>לקוח</th><th>הזמנה</th><th>סוג מבנה</th><th>ועדה</th><th>שלב נוכחי</th><th>סטטוס</th><th>הבא</th><th>חסרים</th></tr></thead><tbody>';
   slice.forEach(function(p){
     var id=p.order_no,cs=curStage(p),ms=missing(p);
-    h+='<tr class="prow" data-open="'+esc(id)+'"'+tint(p)+'><td>'+esc(p.name||"—")+' '+syncedChip(p)+(p.address?'<br><small class="muted">'+esc(p.address)+'</small>':'')+'</td><td class="mono">'+esc(p.order_no||"")+'</td><td>'+esc(p.ptype||"")+'</td><td>'+esc(p.committee||"")+'</td><td>'+(cs?esc(cs[1].label):"—")+'</td><td>'+esc(p.mstatus||"")+'</td><td class="mono" style="white-space:nowrap">'+(p.next_date?esc(fmtDate(p.next_date)):"—")+'</td><td>'+(ms||"")+'</td></tr>';
+    h+='<tr class="prow" data-open="'+esc(id)+'"'+tint(p)+'><td>'+esc(p.name||"—")+' '+syncedChip(p)+(p.address?'<br><small class="muted">'+esc(p.address)+'</small>':'')+'</td><td class="mono">'+esc(p.order_no||"")+(idsLine(p)?'<br><small class="muted">'+esc(idsLine(p))+'</small>':'')+'</td><td>'+esc(p.ptype||"")+'</td><td>'+esc(p.committee||"")+'</td><td>'+(cs?esc(cs[1].label):"—")+'</td><td>'+esc(p.mstatus||"")+'</td><td class="mono" style="white-space:nowrap">'+(p.next_date?esc(fmtDate(p.next_date)):"—")+'</td><td>'+(ms||"")+'</td></tr>';
     if(openId===id) h+='<tr><td colspan="8" style="padding:0; background:var(--surface)">'+detailHTML(p)+'</td></tr>';
   });
   return h+'</tbody></table></div>';
 }
 function rowHTML(p){
   var id=p.order_no,open=(openId===id),s=stateOf(p),cs=curStage(p),pr=progress(p),ms=missing(p),pe=pendingFor(id);
-  var sub=[];if(p.order_no)sub.push(p.order_no);if(p.ptype)sub.push(p.ptype);if(p.kw)sub.push(numloc(p.kw)+" kW");if(p.gush)sub.push("גוש "+p.gush+(p.helka?" חלקה "+p.helka:""));
+  var sub=[];if(p.order_no)sub.push(p.order_no);if(p.pv_order)sub.push("PV "+p.pv_order);if(p.increase_no&&String(p.increase_no)!==String(p.pv_order||""))sub.push("הגדלה "+p.increase_no);if(p.ptype)sub.push(p.ptype);if(p.kw)sub.push(numloc(p.kw)+" kW");if(p.gush)sub.push("גוש "+p.gush+(p.helka?" חלקה "+p.helka:""));
   var h='<section class="row'+(s!=="active"?" dim":"")+'"'+tint(p)+'>';
   h+='<div class="rowline"><div class="rh" data-open="'+esc(id)+'"><span class="rt"><strong>'+esc(p.name||"—")+'</strong>'+(p.address?'<small class="addr">'+esc(p.address)+'</small>':'')+'<small>'+esc(sub.join(" · "))+'</small></span>';
   h+='<span class="rs">'+(cs?esc(cs[1].label):"—")+'<br><small class="muted mono">'+pr.done+'/'+pr.total+' שלבים'+(p.committee?' · '+esc(p.committee):'')+'</small></span>';
