@@ -1270,12 +1270,16 @@ function taskHTML(t,showP){
   var st=TASK_ST[t.status||"pending"];
   var h='<article id="task-'+esc(t.id)+'" class="task '+(t.status==="done"?"done":"pending")+'"><div class="taskh">'+pill(st.c,st.l);
   if(t.kind==="increase")h+='<span class="pill" style="background:var(--info-soft);color:var(--info);border-color:var(--info-line)">הגדלה</span>';
+  if(t.kind==="nadav")h+='<span class="pill" style="background:var(--info-soft);color:var(--info);border-color:var(--info-line)">מנדב</span>';
+  if(t.kind==="nadav_update")h+='<span class="pill" style="background:var(--info-soft);color:var(--info);border-color:var(--info-line)">נדב מבקש עדכון</span>';
   if(showP&&t.project_name)h+='<strong>'+esc(t.project_name)+'</strong>';
   h+='<span class="muted" style="font-size:12px">'+esc(fmtDate(t.created_at))+'</span><span class="grow"></span>';
+  if(canWrite()&&(t.status||"pending")==="pending")h+='<button class="copybtn" data-ack="'+esc(t.id)+'">✓ קיבלתי</button>';
   if(canWrite()&&t.status!=="done")h+='<button class="copybtn" data-done="'+esc(t.id)+'">סמן בוצע</button>';
   if(canWrite())h+='<button class="copybtn danger" data-delt="'+esc(t.id)+'">מחק</button>';
   h+='</div><div class="req">'+esc(t.request)+'</div>';
   if(t.answer)h+='<div class="answer"><em>תשובה'+(t.done_at?' · '+esc(fmtDate(t.done_at)):'')+'</em>'+esc(t.answer)+'</div>';
+  if(canWrite()&&t.status!=="done"&&(t.kind==="nadav"||t.kind==="nadav_update"))h+='<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="tans-'+esc(t.id)+'" placeholder="עדכון לנדב" style="flex:1;min-width:180px"><button class="copybtn" data-tans="'+esc(t.id)+'">שלח עדכון</button></div>';
   return h+'</article>';
 }
 
@@ -1303,6 +1307,8 @@ function bindDetail(){
   document.querySelectorAll("[data-addtaskinc]").forEach(function(b){b.onclick=function(){var id=b.dataset.addtaskinc,r=(el("tri-"+id).value||"").trim();if(!r){el("tri-"+id).focus();return;}var p=findP(id);addTask(id,p?p.name+" · "+id:"",r,"increase");};});
   document.querySelectorAll("[data-niche]").forEach(function(e){e.onchange=function(){var id=e.dataset.niche,val=e.value==="yes";touchAndUpdate(id,{niche_required:val});var bx=el("nichebox-"+id);if(bx)bx.style.display=val?"block":"none";};});
   var g=document.querySelector("[data-addtaskg]");if(g)g.onclick=function(){var r=(el("ntr").value||"").trim();if(!r){el("ntr").focus();return;}var pid=el("ntp").value||"",p=pid?findP(pid):null;addTask(pid,p?p.name+" · "+pid:"",r);};
+  document.querySelectorAll("[data-ack]").forEach(function(b){b.onclick=function(){sb.from("tasks").update({status:"in_progress"}).eq("id",b.dataset.ack).then(function(r){if(r&&r.error){toast("שגיאה: "+r.error.message);return;}toast("סומן שקיבלת");loadTasks().then(render);});};});
+  document.querySelectorAll("[data-tans]").forEach(function(b){b.onclick=function(){var id=b.dataset.tans,v=(el("tans-"+id).value||"").trim();if(!v){el("tans-"+id).focus();return;}var t=tasks.filter(function(x){return String(x.id)===String(id);})[0]||{};var ans=(t.answer?t.answer+"\n":"")+fmtDate(new Date().toISOString())+": "+v;sb.from("tasks").update({answer:ans,status:t.status==="pending"?"in_progress":t.status}).eq("id",id).then(function(r){if(r&&r.error){toast("שגיאה: "+r.error.message);return;}toast("העדכון נשלח");loadTasks().then(render);});};});
   document.querySelectorAll("[data-done]").forEach(function(b){b.onclick=function(){sb.from("tasks").update({status:"done",done_at:new Date().toISOString()}).eq("id",b.dataset.done).then(function(r){if(r&&r.error){toast("סימון בוצע נכשל: "+r.error.message);return;}loadTasks().then(render);});};});
   document.querySelectorAll("[data-delt]").forEach(function(b){b.onclick=function(){sb.from("tasks").delete().eq("id",b.dataset.delt).then(function(r){if(r&&r.error){toast("מחיקה נכשלה: "+r.error.message);return;}loadTasks().then(render);});};});
 }
