@@ -826,7 +826,9 @@ function impCommit(){
     var old=meta||{};
     return sb.from("meta").upsert({key:"import",value:Object.assign({},old,{last_import:stamp,file:impCtx.file,rows:impCtx.rows,loaded:(old.loaded||0)+added,filled:updated})}).then(function(){},function(){});
   }).then(function(){return Promise.all([loadProjects(),loadMeta()]);}).then(function(){
-    render();impClose();toast("נוספו "+added+" · הושלמו נתונים ב-"+updated);
+    if(added){fState="all";fMstatus="all";fPtype="all";fStage="all";shown=PAGE;qText=(recs.length===1?String(recs[0].order_no):"");}
+    render();impClose();toast("נוספו "+added+" · הושלמו נתונים ב-"+updated+(added?" · המסננים נוקו כדי שהחדשים יוצגו":""));
+    if(recs.length===1)gotoTask(recs[0].order_no,"info");
   }).catch(function(e){
     btn.disabled=false;msg.innerHTML='<span style="color:#A33228">שגיאה: '+esc(String(e&&e.message||e))+' (נוספו '+added+', עודכנו '+updated+' לפני השגיאה)</span>';
   });
@@ -1291,8 +1293,16 @@ function bannerHTML(){
   return '<div class="banner"><div class="blbl">● בתור</div><div class="track" id="btrack"><div class="tseg">'+items+'</div><div class="tseg" aria-hidden="true">'+items+'</div></div></div>';
 }
 function markTaskDone(tid){sb.from("tasks").update({status:"done",done_at:new Date().toISOString()}).eq("id",tid).then(function(r){if(r&&r.error){toast("סימון בוצע נכשל: "+r.error.message);return;}loadTasks().then(render);});}
+/* אם הפרויקט מוסתר בגלל מסנן (למשל ברירת המחדל "PV שולם") — מנקים מסננים ומחפשים אותו */
+function revealProject(orderNo){
+  var p=findP(orderNo);if(!p)return;
+  var vis=(typeof matches==="function")?projects.filter(matches):projects;
+  var i=vis.indexOf(p);
+  if(i<0||i>=shown){fState="all";fMstatus="all";fPtype="all";fStage="all";qText=String(orderNo);shown=PAGE;}
+}
 function gotoTask(orderNo,tb,taskId){
   if(!orderNo)return;
+  revealProject(orderNo);
   view="projects"; openId=orderNo; tab=tb||"tasks"; if(!finance[orderNo])loadFinance(orderNo);
   _flashTask=taskId; render(); bindProjects();
   setTimeout(function(){var d=document.querySelector(".detail");if(d)d.scrollIntoView({behavior:"smooth",block:"center"});
