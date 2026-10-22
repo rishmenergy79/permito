@@ -780,12 +780,24 @@ function openImport(){
           'קיימים שבאקסל מוקפאים/מבוטלים (לא שונו, לבדיקה): '+c.existingChanged.length+'<br>'+
           'חזרו לפעילים ומופיעים ברשימת ההסרות (לבדיקה): '+c.backActive.length+'<br>'+
           '<span style="color:#A33228">בלי מספר וללא לקוח מוכר (דולגו): '+c.noKey.length+'</span> · כפולים: '+c.dup.length+'</div>';
-        if(c.addOther.length){h+='<details style="margin-top:8px" open><summary style="font-weight:700;color:#8A5A00;cursor:pointer">חדשים מסוגי מבנה אחרים ('+c.addOther.length+') — לא יתווספו אלא אם תסמן</summary><div style="max-height:220px;overflow:auto;font-size:13px">'+
-          c.addOther.map(function(o,i){return '<label style="display:block;padding:3px 0;border-bottom:1px solid #eee"><input type="checkbox" data-impother="'+i+'"'+(c.addOther.length<=20?" checked":"")+'> '+esc(o.__key)+' · '+esc(o.name||"")+' · '+esc(o.ptype||"ללא סוג")+' · '+esc(o.mstatus||"")+'</label>';}).join("")+'</div></details>';}
+        if(c.addOther.length){h+='<details style="margin-top:8px" open><summary style="font-weight:700;color:#8A5A00;cursor:pointer">חדשים מסוגי מבנה אחרים ('+c.addOther.length+') — לא יתווספו אלא אם תסמן</summary>'+
+          (function(){var pt={},ms={};c.addOther.forEach(function(o){pt[o.ptype||"ללא סוג"]=(pt[o.ptype||"ללא סוג"]||0)+1;ms[o.mstatus||"ללא סטטוס"]=(ms[o.mstatus||"ללא סטטוס"]||0)+1;});
+            function opts(m){return Object.keys(m).sort(function(a,b){return m[b]-m[a];}).map(function(k){return '<option value="'+esc(k)+'">'+esc(k)+' ('+m[k]+')</option>';}).join("");}
+            return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0"><button class="btn btn-sm" data-oth="all">סמן הכל</button><button class="btn btn-sm" data-oth="none">נקה הכל</button>'+
+              '<select data-othpt style="font-size:13px"><option value="">סמן לפי סוג מבנה…</option>'+opts(pt)+'</select>'+
+              '<select data-othms style="font-size:13px"><option value="">סמן לפי סטטוס…</option>'+opts(ms)+'</select>'+
+              '<span id="othcnt" style="font-size:13px;color:#4D5650"></span></div>';})()+
+          '<div style="max-height:220px;overflow:auto;font-size:13px">'+
+          c.addOther.map(function(o,i){return '<label style="display:block;padding:3px 0;border-bottom:1px solid #eee"><input type="checkbox" data-impother="'+i+'" data-pt="'+esc(o.ptype||"ללא סוג")+'" data-ms="'+esc(o.mstatus||"ללא סטטוס")+'"'+(c.addOther.length<=20?" checked":"")+'> '+esc(o.__key)+' · '+esc(o.name||"")+' · '+esc(o.ptype||"ללא סוג")+' · '+esc(o.mstatus||"")+'</label>';}).join("")+'</div></details>';}
         h+=impFillHTML(c)+impChooseHTML(c)+impList("חדשים להוספה",c.add,"#2E6B4A")+impList("חזרו לפעילים - לבדיקה",c.backActive,"#A33228")+impList("קיימים שמוקפאים באקסל - לבדיקה",c.existingChanged,"#A33228")+impList("בלי מספר וללא לקוח מוכר",c.noKey,"#A33228")+impList("חדשים מוקפאים/מבוטלים",c.frozenNew,"#7B8479");
         h+='<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="impGo">אשר וכתוב</button><button class="btn btn-sm" id="impCancel2">סגור</button></div><div id="impMsg2" style="margin-top:10px"></div>';
         impBox(h);
         document.getElementById("impCancel2").onclick=impClose;
+        function othCount(){var n=document.querySelectorAll("[data-impother]:checked").length,ce=el("othcnt");if(ce)ce.textContent="מסומנים: "+n;}
+        document.querySelectorAll("[data-oth]").forEach(function(bt){bt.onclick=function(){var v=bt.dataset.oth==="all";document.querySelectorAll("[data-impother]").forEach(function(x){x.checked=v;});othCount();};});
+        var spt=document.querySelector("[data-othpt]");if(spt)spt.onchange=function(){var v=spt.value;if(!v)return;document.querySelectorAll("[data-impother]").forEach(function(x){if(x.dataset.pt===v)x.checked=true;});spt.value="";othCount();};
+        var sms=document.querySelector("[data-othms]");if(sms)sms.onchange=function(){var v=sms.value;if(!v)return;document.querySelectorAll("[data-impother]").forEach(function(x){if(x.dataset.ms===v)x.checked=true;});sms.value="";othCount();};
+        document.querySelectorAll("[data-impother]").forEach(function(x){x.onchange=othCount;});othCount();
         document.querySelectorAll("[data-impall]").forEach(function(bt){bt.onclick=function(){var v=bt.dataset.impall;document.querySelectorAll("[data-impfill]").forEach(function(x){if(v==="fill"&&!x.querySelector('option[value="fill"]'))x.value="keep";else x.value=v;});};});
         document.getElementById("impGo").onclick=impCommit;
       });
