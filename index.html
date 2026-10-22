@@ -116,7 +116,11 @@ input.f{width:100%; background:var(--surface); border:1px solid var(--line-stron
 .nichebox{border:1px dashed #0090F8; background:rgba(0,144,248,.06); border-radius:10px; padding:12px; margin-top:8px}
 /* המשימות שלי — תפריט עליון */
 .mymenu{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin:0 0 16px}
-.mymenu .mh{display:flex; align-items:center; gap:10px; margin-bottom:10px}
+.mymenu .mh{display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none}
+.mymenu.open .mh{margin-bottom:10px}
+.mymenu .mtog{font-size:13px; color:var(--ink-2); border:1px solid var(--line); border-radius:8px; padding:2px 10px; background:var(--bg)}
+.mymenu .mlist{display:none; max-height:45vh; overflow:auto}
+.mymenu.open .mlist{display:block}
 .mymenu .mh h2{font-family:var(--display); font-size:16px; margin:0; font-weight:500}
 .mymenu .mc{background:var(--accent); color:#fff; border-radius:20px; font-size:12px; padding:1px 9px; font-weight:600}
 .mymenu .mhint{color:var(--ink-3); font-size:11.5px; margin-inline-start:auto}
@@ -874,6 +878,7 @@ function bindFilters(){
   document.addEventListener("change",function(e){var t=e.target;if(t&&SET[t.id]){SET[t.id](t.value);shown=PAGE;render();}});
   document.addEventListener("input",function(e){var t=e.target;if(t&&t.id==="q"){qText=t.value.trim();shown=PAGE;var b=el("body");if(b)b.innerHTML=projectsHTML();var qq=el("q");if(qq){qq.focus();try{qq.setSelectionRange(qq.value.length,qq.value.length);}catch(_){}}}});
   document.addEventListener("click",function(e){var t=e.target;if(!t||!t.closest)return;
+    var mt=t.closest("[data-mtog]");if(mt){var mm=el("mymenu");if(mm){var o=!mm.classList.contains("open");mm.classList.toggle("open",o);try{localStorage.setItem("pmt_mymenu_open",o?"1":"0");}catch(er){}var tg=mm.querySelector(".mtog");if(tg)tg.textContent=o?"▴ סגור":"▾ פתח";}return;}
     var qd=t.closest("[data-qdone]");if(qd){markTaskDone(qd.dataset.qdone);e.stopPropagation();return;}
     var go=t.closest("[data-goto]");if(go){gotoTask(go.dataset.goto,go.dataset.gototab,go.getAttribute("data-task"));return;}
     var dm=t.closest("[data-dm]");if(dm){displayMode=dm.dataset.dm;try{localStorage.setItem("permito_display",displayMode);}catch(_){}shown=PAGE;render();return;}
@@ -1227,7 +1232,8 @@ function taskSync(t){var p=findP(t.order_no);var d=p?p.sync_due:null;var days=d?
   return {txt:d?"סנכרון "+fmtDate(d):"ללא מועד",cls:cls,col:col,name:(p&&p.name)||t.project_name||"כללי"};}
 function myMenuHTML(){
   var arr=pendingTasksSorted(); if(!arr.length)return "";
-  var h='<div class="mymenu"><div class="mh"><h2>המשימות שלי</h2><span class="mc">'+arr.length+'</span><span class="mhint">מסודר לפי מועד סנכרון — הדחוף ראשון · רץ בבוקר אוטומטית</span></div>';
+  var op=false;try{op=localStorage.getItem("pmt_mymenu_open")==="1";}catch(e){}
+  var h='<div class="mymenu'+(op?' open':'')+'" id="mymenu"><div class="mh" data-mtog="1"><h2>המשימות שלי</h2><span class="mc">'+arr.length+'</span><span class="mhint">מסודר לפי מועד סנכרון — הדחוף ראשון</span><span class="mtog">'+(op?'▴ סגור':'▾ פתח')+'</span></div><div class="mlist">';
   arr.forEach(function(t){var s=taskSync(t);
     h+='<div class="qitem'+(s.cls==="soon"?" urgent":"")+'" data-goto="'+esc(t.order_no||"")+'" data-gototab="'+taskTargetTab(t)+'" data-task="'+esc(t.id)+'">'+
        '<span class="qwhen '+s.cls+'">'+esc(s.txt)+'</span><span class="qproj">'+esc(s.name)+'</span>'+
@@ -1235,7 +1241,7 @@ function myMenuHTML(){
        '<span class="qtask">'+esc(t.request)+'</span>'+
        (canWrite()?'<button class="qdone" data-qdone="'+esc(t.id)+'">✓ בוצע</button>':'')+'</div>';
   });
-  return h+'</div>';
+  return h+'</div></div>';
 }
 function bannerHTML(){
   var arr=pendingTasksSorted(); if(!arr.length)return "";
@@ -1243,7 +1249,8 @@ function bannerHTML(){
   arr.forEach(function(t){var s=taskSync(t);
     items+='<span class="bitem" data-goto="'+esc(t.order_no||"")+'" data-gototab="'+taskTargetTab(t)+'" data-task="'+esc(t.id)+'"><i class="bdot" style="background:'+s.col+'"></i>'+esc(s.name)+' — '+esc(t.request)+' <b class="bwhen">'+esc(s.txt)+'</b></span>';
   });
-  return '<div class="banner"><div class="blbl">● בתור</div><div class="track">'+items+'</div></div>';
+  var dur=Math.max(60,arr.length*9);
+  return '<div class="banner"><div class="blbl">● בתור</div><div class="track" style="animation-duration:'+dur+'s">'+items+'</div></div>';
 }
 function markTaskDone(tid){sb.from("tasks").update({status:"done",done_at:new Date().toISOString()}).eq("id",tid).then(function(r){if(r&&r.error){toast("סימון בוצע נכשל: "+r.error.message);return;}loadTasks().then(render);});}
 function gotoTask(orderNo,tb,taskId){
