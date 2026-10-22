@@ -499,8 +499,16 @@ function checkIncoming(){
   el("incAck").onclick=function(){askN();ack();};
   var op=el("incOpen");if(op)op.onclick=function(){ack(function(){gotoTask(t.order_no,"tasks",t.id);});};
 }
+/* שליפה בעמודים של 1000 — השרת מחזיר עד 1000 שורות לבקשה */
+function fetchAllRows(table,cols){
+  var all=[],size=1000;
+  function page(from){return sb.from(table).select(cols).order("order_no",{ascending:true}).range(from,from+size-1).then(function(r){
+    if(r.error)return {error:r.error};all=all.concat(r.data||[]);
+    return (r.data||[]).length===size?page(from+size):{data:all};});}
+  return page(0);
+}
 function loadProjects(){
-  return sb.from("projects").select("*").then(function(r){
+  return fetchAllRows("projects","*").then(function(r){
     if(r.error) throw r.error;
     projects=(r.data||[]);
     projects.forEach(function(p){p.stages=p.stages||{};p.docs=p.docs||{};p.contacts=p.contacts||{};});
