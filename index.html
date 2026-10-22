@@ -459,7 +459,44 @@ function startApp(){
   Promise.all([loadProjects(), loadTasks(), loadMeta()]).then(function(){
     subscribe();
     render();
+    handleDeepLink();
+    checkIncoming();
   }).catch(function(e){ renderLoading("שגיאת טעינה: "+esc(String(e&&e.message||e))); });
+}
+/* קישור ישיר מ-PERMITO J: #open=<מספר הזמנה>&task=<מזהה> */
+function handleDeepLink(){
+  var h=(location.hash||"").replace(/^#/,""),o={};h.split("&").forEach(function(kv){var i=kv.indexOf("=");if(i>0)o[kv.slice(0,i)]=decodeURIComponent(kv.slice(i+1));});
+  if(!o.open&&!o.task)return;
+  try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
+  if(o.open&&findP(o.open))gotoTask(o.open,"tasks",o.task||null);
+  else{view="queue";render();if(o.task)setTimeout(function(){var te=el("task-"+o.task);if(te){te.scrollIntoView({behavior:"smooth",block:"center"});te.classList.add("tflash");}},150);}
+}
+/* חלון קופץ למשימה חדשה מנדב — נשאר עד שמאשרים קבלה */
+var _incShown={};
+function checkIncoming(){
+  if(!canWrite()||document.getElementById("incBox"))return;
+  var t=tasks.filter(function(x){return (x.kind==="nadav"||x.kind==="nadav_update")&&(x.status||"pending")==="pending"&&x.created_by!==me.id&&!_incShown[x.id];}).sort(function(a,b){return String(a.created_at).localeCompare(String(b.created_at));})[0];
+  if(!t)return;
+  var n=tasks.filter(function(x){return (x.kind==="nadav"||x.kind==="nadav_update")&&(x.status||"pending")==="pending"&&x.created_by!==me.id;}).length;
+  if("Notification" in window&&Notification.permission==="granted"&&document.hidden){try{new Notification("משימה חדשה מנדב",{body:(t.project_name?t.project_name+" — ":"")+String(t.request).slice(0,120),tag:"pmt-"+t.id});}catch(e){}}
+  var b=document.createElement("div");b.id="incBox";b.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl";
+  b.innerHTML='<div style="background:var(--surface,#fff);color:var(--ink,#1C231C);border-radius:16px;max-width:520px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.3);border-top:6px solid var(--accent,#2E6B4A)">'+
+    '<div style="font-size:13px;color:var(--ink-3,#7B8479)">'+(t.kind==="nadav_update"?"נדב מבקש עדכון":"משימה חדשה מנדב")+(n>1?' · '+n+' ממתינות לאישור':'')+'</div>'+
+    (t.project_name?'<div style="font-size:19px;font-weight:700;margin:6px 0 2px">'+esc(t.project_name)+'</div>':'')+
+    '<div style="white-space:pre-wrap;font-size:16px;margin:10px 0 16px;line-height:1.55">'+esc(t.request)+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="incAck">✓ קיבלתי</button>'+(t.order_no?'<button class="btn" id="incOpen">קיבלתי ופתח את הפרויקט</button>':'')+'</div>'+
+    '<div id="incErr" style="margin-top:8px;color:#A33228;font-size:13px"></div></div>';
+  document.body.appendChild(b);
+  function ack(then){
+    sb.from("tasks").update({status:"in_progress"}).eq("id",t.id).then(function(r){
+      if(r&&r.error){el("incErr").textContent="שגיאה: "+r.error.message;return;}
+      _incShown[t.id]=1;b.remove();t.status="in_progress";
+      loadTasks().then(function(){render();if(then)then();setTimeout(checkIncoming,300);});
+    });
+  }
+  function askN(){try{if("Notification" in window&&Notification.permission==="default")Notification.requestPermission();}catch(e){}}
+  el("incAck").onclick=function(){askN();ack();};
+  var op=el("incOpen");if(op)op.onclick=function(){ack(function(){gotoTask(t.order_no,"tasks",t.id);});};
 }
 function loadProjects(){
   return sb.from("projects").select("*").then(function(r){
@@ -491,7 +528,7 @@ function sortProjects(){
 function subscribe(){
   sb.channel("permito-live")
     .on("postgres_changes",{event:"*",schema:"permito",table:"projects"},function(){ loadProjects().then(render); })
-    .on("postgres_changes",{event:"*",schema:"permito",table:"tasks"},function(){ loadTasks().then(render); })
+    .on("postgres_changes",{event:"*",schema:"permito",table:"tasks"},function(){ loadTasks().then(function(){render();checkIncoming();}); })
     .subscribe();
 }
 function findP(id){for(var i=0;i<projects.length;i++)if(projects[i].order_no===id)return projects[i];return null;}
