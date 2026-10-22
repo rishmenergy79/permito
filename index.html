@@ -338,6 +338,7 @@ function renderLicenseError(){
     '<p class="muted" style="font-size:13px;margin-top:14px">התוכנה מורשית להפעלה בדומיין המורשה בלבד.</p></div></div>';
 }
 function renderLogin(errMsg){
+  var bh=document.getElementById("bannerHost");if(bh)bh.remove();
   var h='<div class="center"><div class="card">'+
    '<div class="brandbig">Permito</div><div class="brandsub">מעקב פרויקטים סולארים — מאורות אנרגיה מתחדשת</div>'+
    '<div id="authbox">'+
@@ -588,9 +589,9 @@ function render(){
     '<button data-v="queue" aria-current="'+(view==="queue")+'">תור משימות</button>'+
     '</div><span class="grow"></span><span class="count" id="count"></span></div>';
   if(view==="projects") h+=filtersHTML();
-  h+='<div id="body"></div></div>'+bannerHTML();
+  h+='<div id="body"></div></div>';
   el("root").innerHTML=h;
-  setTimeout(function(){var tr=el("btrack");if(!tr)return;var seg=tr.querySelector(".tseg");if(!seg)return;tr.style.animationDuration=Math.max(20,Math.round(seg.scrollWidth/45))+"s";},0);
+  updateBanner();
   bindTop();
   renderTiles();
   el("body").innerHTML = view==="projects"?projectsHTML():queueHTML();
@@ -1304,6 +1305,19 @@ function myMenuHTML(){
        (canWrite()?'<button class="qdone" data-qdone="'+esc(t.id)+'">✓ בוצע</button>':'')+'</div>';
   });
   return h+'</div></div>';
+}
+/* הבאנר יושב מחוץ לאזור שמתרנדר מחדש: נבנה מחדש רק כשהתוכן משתנה, וממשיך מאותה נקודה ובאותה מהירות */
+var BANNER_PX_PER_SEC=45;
+function updateBanner(){
+  var html=bannerHTML(),host=document.getElementById("bannerHost");
+  if(!host){host=document.createElement("div");host.id="bannerHost";document.body.appendChild(host);}
+  if(host._html===html)return;
+  var elapsed=0,tr0=el("btrack");
+  if(tr0&&tr0.getAnimations){var an=tr0.getAnimations()[0];if(an&&an.currentTime!=null)elapsed=an.currentTime/1000;}
+  host._html=html;host.innerHTML=html;
+  var tr=el("btrack");if(!tr)return;var seg=tr.querySelector(".tseg");if(!seg)return;
+  var dur=Math.max(20,seg.scrollWidth/BANNER_PX_PER_SEC);
+  tr.style.animationDuration=dur+"s";tr.style.animationDelay=(-(elapsed%dur))+"s";
 }
 function bannerHTML(){
   var arr=pendingTasksSorted(); if(!arr.length)return "";
