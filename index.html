@@ -465,6 +465,7 @@ function startApp(){
     render();
     handleDeepLink();
     checkIncoming();
+    startFu();
   }).catch(function(e){ renderLoading("שגיאת טעינה: "+esc(String(e&&e.message||e))); });
 }
 /* קישור ישיר מ-PERMITO J: #open=<מספר הזמנה>&task=<מזהה> */
@@ -1401,10 +1402,10 @@ function taskSync(t){var p=findP(t.order_no);var d=p?p.sync_due:null;var days=d?
 function myMenuHTML(){
   var arr=pendingTasksSorted(); if(!arr.length)return "";
   var op=false;try{op=localStorage.getItem("pmt_mymenu_open")==="1";}catch(e){}
-  var h='<div class="mymenu'+(op?' open':'')+'" id="mymenu"><div class="mh" data-mtog="1"><h2>המשימות שלי</h2><span class="mc">'+arr.length+'</span><span class="mhint">מסודר לפי מועד סנכרון — הדחוף ראשון</span><span class="mtog">'+(op?'▴ סגור':'▾ פתח')+'</span></div><div class="mlist">';
+  var h='<div class="mymenu'+(op?' open':'')+'" id="mymenu"><div class="mh" data-mtog="1"><h2>המשימות שלי</h2><span class="mc">'+arr.length+'</span><span class="mhint">מסודר לפי מועד סנכרון — הדחוף ראשון</span><span id="fubadge" class="pill" style="display:'+(tasks.filter(fuDue).length?'inline-flex':'none')+';background:#FFF2DC;color:#B26A00">⏰ '+tasks.filter(fuDue).length+' פולואפ</span><span class="mtog">'+(op?'▴ סגור':'▾ פתח')+'</span></div><div class="mlist">';
   arr.forEach(function(t){var s=taskSync(t);
     h+='<div class="qitem'+(s.cls==="soon"?" urgent":"")+'" data-goto="'+esc(t.order_no||"")+'" data-gototab="'+taskTargetTab(t)+'" data-task="'+esc(t.id)+'">'+
-       '<span class="qwhen '+s.cls+'">'+esc(s.txt)+'</span><span class="qproj">'+esc(s.name)+'</span>'+
+       (fuDue(t)?'<span title="הגיע זמן פולואפ">⏰</span>':'')+'<span class="qwhen '+s.cls+'">'+esc(s.txt)+'</span><span class="qproj">'+esc(s.name)+'</span>'+
        (t.kind==="increase"?'<span class="pill" style="background:var(--info-soft);color:var(--info);border-color:var(--info-line);font-size:10px">הגדלה</span>':'')+
        '<span class="qtask">'+esc(t.request)+'</span>'+
        (canWrite()?'<button class="qdone" data-qdone="'+esc(t.id)+'">✓ בוצע</button>':'')+'</div>';
@@ -1473,8 +1474,12 @@ function taskHTML(t,showP){
   if(canWrite()&&t.status!=="done")h+='<button class="copybtn" data-done="'+esc(t.id)+'">סמן בוצע</button>';
   if(canWrite())h+='<button class="copybtn danger" data-delt="'+esc(t.id)+'">מחק</button>';
   h+='</div><div class="req">'+esc(t.request)+'</div>';
-  if(t.answer)h+='<div class="answer"><em>תשובה'+(t.done_at?' · '+esc(fmtDate(t.done_at)):'')+'</em>'+esc(t.answer)+'</div>';
-  if(canWrite()&&t.status!=="done"&&(t.kind==="nadav"||t.kind==="nadav_update"))h+='<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="tans-'+esc(t.id)+'" placeholder="עדכון לנדב" style="flex:1;min-width:180px"><button class="copybtn" data-tans="'+esc(t.id)+'">שלח עדכון</button></div>';
+  if(t.answer)h+='<div class="answer"><em>'+((t.kind==="nadav"||t.kind==="nadav_update"||!t.done_at)?'עדכונים':'תשובה')+(t.done_at?' · '+esc(fmtDate(t.done_at)):'')+'</em>'+esc(t.answer)+'</div>';
+  if(canWrite()&&t.status!=="done"){
+    var fromN=(t.kind==="nadav"||t.kind==="nadav_update");
+    h+='<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="tans-'+esc(t.id)+'" placeholder="'+(fromN?'עדכון לנדב':'רישום עדכון')+'" style="flex:1;min-width:180px"><button class="copybtn" data-tans="'+esc(t.id)+'">'+(fromN?'שלח עדכון':'שמור עדכון')+'</button></div>';
+    h+=fuRowHTML(t);
+  }
   return h+'</article>';
 }
 
@@ -1505,7 +1510,8 @@ function bindDetail(){
   document.querySelectorAll("[data-niche]").forEach(function(e){e.onchange=function(){var id=e.dataset.niche,val=e.value==="yes";touchAndUpdate(id,{niche_required:val});var bx=el("nichebox-"+id);if(bx)bx.style.display=val?"block":"none";};});
   var g=document.querySelector("[data-addtaskg]");if(g)g.onclick=function(){var r=(el("ntr").value||"").trim();if(!r){el("ntr").focus();return;}var pid=el("ntp").value||"",p=pid?findP(pid):null;addTask(pid,p?p.name+" · "+pid:"",r);};
   document.querySelectorAll("[data-ack]").forEach(function(b){b.onclick=function(){sb.from("tasks").update({status:"in_progress"}).eq("id",b.dataset.ack).then(function(r){if(r&&r.error){toast("שגיאה: "+r.error.message);return;}toast("סומן שקיבלת");loadTasks().then(render);});};});
-  document.querySelectorAll("[data-tans]").forEach(function(b){b.onclick=function(){var id=b.dataset.tans,v=(el("tans-"+id).value||"").trim();if(!v){el("tans-"+id).focus();return;}var t=tasks.filter(function(x){return String(x.id)===String(id);})[0]||{};var ans=(t.answer?t.answer+"\n":"")+fmtDate(new Date().toISOString())+": "+v;sb.from("tasks").update({answer:ans,status:t.status==="pending"?"in_progress":t.status}).eq("id",id).then(function(r){if(r&&r.error){toast("שגיאה: "+r.error.message);return;}toast("העדכון נשלח");loadTasks().then(render);});};});
+  document.querySelectorAll("[data-tans]").forEach(function(b){b.onclick=function(){var id=b.dataset.tans,v=(el("tans-"+id).value||"").trim();if(!v){el("tans-"+id).focus();return;}var t=tasks.filter(function(x){return String(x.id)===String(id);})[0]||{};var ans=(t.answer?t.answer+"\n":"")+fmtDate(new Date().toISOString())+": "+v;sb.from("tasks").update({answer:ans,status:t.status==="pending"?"in_progress":t.status}).eq("id",id).then(function(r){if(r&&r.error){toast("שגיאה: "+r.error.message);return;}toast((t.kind==="nadav"||t.kind==="nadav_update")?"העדכון נשלח":"העדכון נשמר");loadTasks().then(render);});};});
+  bindFu();
   document.querySelectorAll("[data-done]").forEach(function(b){b.onclick=function(){sb.from("tasks").update({status:"done",done_at:new Date().toISOString()}).eq("id",b.dataset.done).then(function(r){if(r&&r.error){toast("סימון בוצע נכשל: "+r.error.message);return;}loadTasks().then(render);});};});
   document.querySelectorAll("[data-delt]").forEach(function(b){b.onclick=function(){sb.from("tasks").delete().eq("id",b.dataset.delt).then(function(r){if(r&&r.error){toast("מחיקה נכשלה: "+r.error.message);return;}loadTasks().then(render);});};});
 }
@@ -1514,6 +1520,39 @@ function saveFinance(id,field,val){
   finance[id]=finance[id]||{}; finance[id][field]=val;
   sb.from("project_finance").upsert(body,{onConflict:"order_no"}).then(function(r){if(r.error)toast("שמירת מחיר נכשלה: "+r.error.message);});
 }
+/* ---------- פולואפ אישי על משימה: נשמר לכל משתמש בנפרד (meta: pmt_fu_<id>) ---------- */
+var FU={},_fuNotified={};
+function fuKey(){return "pmt_fu_"+me.id;}
+function loadFu(){return sb.from("meta").select("value").eq("key",fuKey()).maybeSingle().then(function(r){FU=(r&&r.data&&r.data.value)||{};}).catch(function(){FU={};});}
+function saveFu(){return sb.from("meta").upsert({key:fuKey(),value:FU}).then(function(r){if(r&&r.error)toast("שמירת הפולואפ נכשלה: "+r.error.message);});}
+function fuPad(n){return ("0"+n).slice(-2);}
+function fuLocal(d){var x=new Date(d);return x.getFullYear()+"-"+fuPad(x.getMonth()+1)+"-"+fuPad(x.getDate())+"T"+fuPad(x.getHours())+":"+fuPad(x.getMinutes());}
+function fuDue(t){var f=FU[t.id];return !!(f&&t.status!=="done"&&new Date(f).getTime()<=Date.now());}
+function fuCal(t,at){var s=new Date(at),e=new Date(s.getTime()+15*60000);function z(x){return x.toISOString().replace(/[-:]/g,"").replace(/\.\d{3}/,"");}
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent("פולואפ: "+(t.project_name||"משימה"))+"&dates="+z(s)+"/"+z(e)+"&details="+encodeURIComponent(String(t.request||"")+"\n\nPermito: "+location.origin+location.pathname+"#"+(t.order_no?"open="+encodeURIComponent(t.order_no)+"&":"")+"task="+t.id);}
+function fuRowHTML(t){
+  var f=FU[t.id],due=fuDue(t);
+  return '<div class="furow" data-furow="'+esc(t.id)+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)'+(due?';background:#FFF2DC;border-radius:8px;padding:6px':'')+'">'+
+    '<span class="muted" style="font-size:13px">'+(due?'⏰ הגיע זמן פולואפ':'פולואפ:')+'</span><input type="datetime-local" data-tfu="'+esc(t.id)+'" value="'+(f?fuLocal(f):"")+'" style="width:auto">'+
+    (f?'<a class="copybtn" target="_blank" rel="noopener" href="'+esc(fuCal(t,f))+'">הוסף ליומן</a><button class="copybtn" data-fusnooze="'+esc(t.id)+'">דחה ביום</button><button class="copybtn" data-fuoff="'+esc(t.id)+'">'+(due?'טופל, הסר':'בטל')+'</button>':'')+'</div>';
+}
+function bindFu(){
+  document.querySelectorAll("[data-tfu]").forEach(function(i){i.onchange=function(){var id=i.dataset.tfu;if(i.value)FU[id]=new Date(i.value).toISOString();else delete FU[id];delete _fuNotified[id];saveFu().then(function(){render();bindProjects();});toast(i.value?"הפולואפ נקבע":"הפולואפ בוטל");};});
+  document.querySelectorAll("[data-fuoff]").forEach(function(b){b.onclick=function(){delete FU[b.dataset.fuoff];saveFu().then(function(){render();bindProjects();});};});
+  document.querySelectorAll("[data-fusnooze]").forEach(function(b){b.onclick=function(){var x=new Date();x.setDate(x.getDate()+1);x.setHours(9,0,0,0);FU[b.dataset.fusnooze]=x.toISOString();delete _fuNotified[b.dataset.fusnooze];saveFu().then(function(){render();bindProjects();});toast("נדחה למחר ב-09:00");};});
+}
+/* בדיקה כל דקה: התראה על פולואפ שהגיע, בלי לרנדר מחדש (כדי לא למחוק מה שמקלידים) */
+function fuTick(){
+  var due=tasks.filter(fuDue);
+  due.forEach(function(t){
+    var row=document.querySelector('[data-furow="'+t.id+'"]');if(row&&!row.dataset.dueOn){row.dataset.dueOn="1";row.style.background="#FFF2DC";row.style.borderRadius="8px";row.style.padding="6px";}
+    if(_fuNotified[t.id])return;_fuNotified[t.id]=1;
+    toast("⏰ פולואפ: "+(t.project_name||String(t.request).slice(0,40)));
+    if("Notification" in window&&Notification.permission==="granted"){try{var n=new Notification("פולואפ על משימה",{body:(t.project_name?t.project_name+" — ":"")+String(t.request).slice(0,120),tag:"pmtfu-"+t.id});n.onclick=function(){window.focus();if(t.order_no)gotoTask(t.order_no,"tasks",t.id);else{view="queue";render();}};}catch(e){}}
+  });
+  var b=el("fubadge");if(b){b.textContent=due.length?("⏰ "+due.length+" פולואפ"):"";b.style.display=due.length?"inline-flex":"none";}
+}
+function startFu(){loadFu().then(function(){render();fuTick();setInterval(fuTick,60000);});}
 function addTask(pid,pname,req,kind){
   sb.from("tasks").insert({order_no:pid||null,project_name:pname,request:req,status:"pending",kind:kind||"general",created_by:me.id}).then(function(r){
     if(r.error){toast(r.error.message);return;}
